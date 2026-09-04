@@ -128,6 +128,20 @@ class LexicalEmbeddings(Embeddings):
     class has *state*: embed the documents first, then queries.
     """
 
+    # CORPUS-FITTED: this embedder's output for a document depends on the OTHER
+    # documents it was fitted alongside, because IDF is a corpus-wide statistic.
+    #
+    # That has a consequence which is easy to miss and expensive to discover:
+    # you CANNOT incrementally re-embed a subset. Embedding one changed document
+    # on its own fits IDF to a one-document corpus and produces vectors from a
+    # different space than the rest of the index.
+    #
+    # Neural embedders (nomic-embed-text, text-embedding-3-small) are stateless
+    # per document and set this to False, which is what makes incremental
+    # indexing safe for them. 01_embeddings/production.py reads this flag and
+    # falls back to a full rebuild when it is True.
+    corpus_fitted = True
+
     def __init__(self, dim: int = 512) -> None:
         self.dim = dim
         # document frequency: how many documents each hashed slot appeared in
