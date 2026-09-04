@@ -81,7 +81,7 @@ class _UnavailableChatVertexAI:
     explains the situation rather than letting a subtle bug through.
     """
 
-    def __init__(self, *args, **kwargs):  # noqa: D107 - message is the docs
+    def __init__(self, *args, **kwargs):
         raise NotImplementedError(
             "ChatVertexAI is not available in this project.\n"
             "This is a compatibility placeholder installed by core.compat so "

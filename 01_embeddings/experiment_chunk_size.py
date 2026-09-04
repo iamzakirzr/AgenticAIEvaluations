@@ -53,11 +53,11 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from mini_rag import MiniRAG  # noqa: E402
+from mini_rag import MiniRAG
 
-from core.golden import load_golden  # noqa: E402
-from core.metrics import evaluate_retrieval  # noqa: E402
-from core.providers import LexicalEmbeddings  # noqa: E402
+from core.golden import load_golden
+from core.metrics import evaluate_retrieval
+from core.providers import LexicalEmbeddings
 
 # Swept values. Overlap is held at ~17% of size so that we vary ONE thing at a
 # time -- changing two variables at once makes the result uninterpretable, which
@@ -174,7 +174,7 @@ def main() -> None:
         )
 
     print("\n  Reproduce any row directly:")
-    print(f"    CHUNK_SIZE=300 .venv/bin/python 01_embeddings/walkthrough.py")
+    print("    CHUNK_SIZE=300 .venv/bin/python 01_embeddings/walkthrough.py")
 
 
 if __name__ == "__main__":

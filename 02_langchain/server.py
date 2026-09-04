@@ -30,13 +30,13 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.responses import HTMLResponse  # noqa: E402
-from pipeline import RagPipeline, build_offline_pipeline  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from pipeline import RagPipeline, build_offline_pipeline
+from pydantic import BaseModel
 
-from core.config import settings  # noqa: E402
-from core.providers import ollama_available  # noqa: E402
+from core.config import settings
+from core.providers import ollama_available
 
 app = FastAPI(title="RAG Chatbot", version="0.1.0")
 
@@ -56,8 +56,12 @@ def get_pipeline() -> RagPipeline:
             # Degrade gracefully rather than crashing: retrieval is real, only
             # generation is scripted. You can still explore the sources panel.
             _pipeline = build_offline_pipeline(
-                ["(Ollama is not running, so this answer is scripted. "
-                 "Retrieval below is real.) See passage [1]."]
+                [
+                    (
+                        "(Ollama is not running, so this answer is scripted. "
+                        "Retrieval below is real.) See passage [1]."
+                    )
+                ]
             )
     return _pipeline
 

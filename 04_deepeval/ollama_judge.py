@@ -84,11 +84,11 @@ if str(_ROOT) not in sys.path:
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 os.environ.setdefault("DEEPEVAL_UPDATE_WARNING_OPT_OUT", "YES")
 
-import httpx  # noqa: E402
-from deepeval.models import DeepEvalBaseLLM  # noqa: E402
-from pydantic import BaseModel, ValidationError  # noqa: E402
+import httpx
+from deepeval.models import DeepEvalBaseLLM
+from pydantic import BaseModel, ValidationError
 
-from core.config import settings  # noqa: E402
+from core.config import settings
 
 
 class JudgeFailure(RuntimeError):
@@ -143,7 +143,7 @@ class OllamaJudge(DeepEvalBaseLLM):
 
     # ---- DeepEvalBaseLLM interface ----------------------------------------
 
-    def load_model(self) -> "OllamaJudge":
+    def load_model(self) -> OllamaJudge:
         """Required by the ABC. Ollama is a server, so there is nothing to load."""
         return self
 
@@ -293,7 +293,7 @@ class ExplodingJudge(DeepEvalBaseLLM):
     day that stops being true.
     """
 
-    def load_model(self) -> "ExplodingJudge":
+    def load_model(self) -> ExplodingJudge:
         return self
 
     def get_model_name(self) -> str:

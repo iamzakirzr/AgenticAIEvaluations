@@ -51,12 +51,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from chunking import Chunk, recursive_chunks  # noqa: E402  (sibling module)
+from chunking import Chunk, recursive_chunks
 
-from core.config import settings  # noqa: E402
-from core.golden import iter_corpus  # noqa: E402
-from core.providers import LexicalEmbeddings  # noqa: E402
-from core.trace import RagTrace, RetrievedChunk  # noqa: E402
+from core.config import settings
+from core.golden import iter_corpus
+from core.providers import LexicalEmbeddings
+from core.trace import RagTrace, RetrievedChunk
 
 
 class MiniRAG:
@@ -78,7 +78,7 @@ class MiniRAG:
 
     # ---- STEP 1 & 2: chunk, then embed ------------------------------------
 
-    def index(self, documents: dict[str, str] | None = None) -> "MiniRAG":
+    def index(self, documents: dict[str, str] | None = None) -> MiniRAG:
         """Build the index. Returns self so you can chain.
 
         >>> rag = MiniRAG().index()

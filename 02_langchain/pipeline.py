@@ -39,17 +39,17 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from langchain_core.documents import Document  # noqa: E402
-from langchain_core.language_models import BaseChatModel  # noqa: E402
-from langchain_core.output_parsers import StrOutputParser  # noqa: E402
-from langchain_core.vectorstores import InMemoryVectorStore  # noqa: E402
-from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: E402
-from prompts import GROUNDED_PROMPT, format_context, invalid_citations  # noqa: E402
+from langchain_core.documents import Document
+from langchain_core.language_models import BaseChatModel
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from prompts import GROUNDED_PROMPT, format_context, invalid_citations
 
-from core.config import settings  # noqa: E402
-from core.golden import iter_corpus  # noqa: E402
-from core.providers import LexicalEmbeddings  # noqa: E402
-from core.trace import RagTrace, RetrievedChunk  # noqa: E402
+from core.config import settings
+from core.golden import iter_corpus
+from core.providers import LexicalEmbeddings
+from core.trace import RagTrace, RetrievedChunk
 
 
 class RagPipeline:
@@ -87,7 +87,7 @@ class RagPipeline:
 
     # ---- INGESTION --------------------------------------------------------
 
-    def ingest(self, corpus: dict[str, str] | None = None) -> "RagPipeline":
+    def ingest(self, corpus: dict[str, str] | None = None) -> RagPipeline:
         """Load, split and index the corpus. Returns self for chaining."""
         docs = corpus if corpus is not None else dict(iter_corpus())
 

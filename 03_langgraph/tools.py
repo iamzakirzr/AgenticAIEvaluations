@@ -45,9 +45,9 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from langchain_core.tools import tool  # noqa: E402
+from langchain_core.tools import tool
 
-from core.golden import corpus_doc_ids  # noqa: E402
+from core.golden import corpus_doc_ids
 
 # Populated by `bind_retriever()` so the tools can reach the vector store
 # without importing lesson 02 at module scope (which would couple the lessons

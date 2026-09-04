@@ -23,18 +23,18 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from chunking import (  # noqa: E402
+from chunking import (
     chunk_stats,
     fixed_size_chunks,
     markdown_section_chunks,
     measure_overlap,
     recursive_chunks,
 )
-from mini_rag import MiniRAG  # noqa: E402
+from mini_rag import MiniRAG
 
-from core.golden import iter_corpus  # noqa: E402
-from core.metrics import evaluate_retrieval  # noqa: E402
-from core.providers import LexicalEmbeddings, cosine_similarity, tokenize  # noqa: E402
+from core.golden import iter_corpus
+from core.metrics import evaluate_retrieval
+from core.providers import LexicalEmbeddings, cosine_similarity, tokenize
 
 
 def rule(title: str) -> None:
@@ -86,11 +86,11 @@ def step_2_hashing() -> None:
         "We use (b). Below, watch distinct words land in distinct slots."
     )
 
-    embedder = LexicalEmbeddings(dim=64)  # tiny dim so collisions are visible
+    # dim=64 is deliberately tiny so collisions are visible below.
     text = "chunk overlap protects facts at a boundary chunk chunk"
     tokens = tokenize(text)
 
-    sub(f"Hashing into dim=64 (deliberately small to provoke collisions)")
+    sub("Hashing into dim=64 (deliberately small to provoke collisions)")
     slots: dict[int, list[str]] = {}
     for token in tokens:
         from core.providers import _hash_token  # internal, shown on purpose

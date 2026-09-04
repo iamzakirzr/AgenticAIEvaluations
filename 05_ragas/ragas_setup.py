@@ -75,15 +75,15 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 # MUST run before any ragas import anywhere in the process.
-from core.compat import bootstrap  # noqa: E402
+from core.compat import bootstrap
 
 bootstrap()
 
-from ragas.embeddings.base import embedding_factory  # noqa: E402
-from ragas.llms import llm_factory  # noqa: E402
+from ragas.embeddings.base import embedding_factory
+from ragas.llms import llm_factory
 
-from core.config import settings  # noqa: E402
-from core.providers import get_openai_compatible_client  # noqa: E402
+from core.config import settings
+from core.providers import get_openai_compatible_client
 
 
 def build_ragas_llm(model: str | None = None):

@@ -42,7 +42,7 @@ import functools
 import math
 import re
 from collections import Counter
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 import httpx
 import numpy as np
@@ -308,11 +308,11 @@ def scripted_chat_model(responses: Iterable[str]):
 __all__ = [
     "LexicalEmbeddings",
     "cosine_similarity",
-    "tokenize",
-    "ollama_available",
-    "installed_ollama_models",
     "get_chat_model",
     "get_ollama_embeddings",
     "get_openai_compatible_client",
+    "installed_ollama_models",
+    "ollama_available",
     "scripted_chat_model",
+    "tokenize",
 ]

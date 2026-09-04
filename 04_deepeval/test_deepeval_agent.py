@@ -33,10 +33,10 @@ for path in (str(_HERE), str(_HERE.parent / "03_langgraph"), str(_HERE.parent / 
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from deepeval_adapters import agent_trace_to_test_case
 from agent import bind_default_retriever, build_offline_agent
 from deepeval.metrics import ToolCorrectnessMetric
 from deepeval.test_case import LLMTestCase, ToolCall
+from deepeval_adapters import agent_trace_to_test_case
 from ollama_judge import ExplodingJudge
 from scripted_model import final_answer, tool_call
 

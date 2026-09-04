@@ -45,10 +45,10 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from deepeval.test_case import LLMTestCase, ToolCall  # noqa: E402
+from deepeval.test_case import LLMTestCase, ToolCall
 
-from core.golden import GoldenItem  # noqa: E402
-from core.trace import RagTrace  # noqa: E402
+from core.golden import GoldenItem
+from core.trace import RagTrace
 
 
 def rag_trace_to_test_case(trace: RagTrace, item: GoldenItem | None = None) -> LLMTestCase:

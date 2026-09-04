@@ -250,9 +250,8 @@ def test_refusal_is_recorded_as_information_not_failure(spans):
     """
     from pipeline import RagPipeline
 
-    from core.providers import LexicalEmbeddings, scripted_chat_model
-
     from core.golden import REFUSAL
+    from core.providers import LexicalEmbeddings, scripted_chat_model
 
     honest = RagPipeline(
         llm=scripted_chat_model([REFUSAL]), embeddings=LexicalEmbeddings(dim=2048)

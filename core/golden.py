@@ -49,9 +49,10 @@ that makes a dataset genuinely useful.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Literal
+from typing import Any, Literal
 
 from core.config import CORPUS_DIR, GOLDEN_PATH
 
@@ -97,7 +98,7 @@ class GoldenItem:
         return self.category != "unanswerable"
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "GoldenItem":
+    def from_dict(cls, raw: dict[str, Any]) -> GoldenItem:
         return cls(
             id=raw["id"],
             question=raw["question"],

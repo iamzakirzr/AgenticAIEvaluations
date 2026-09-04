@@ -32,7 +32,8 @@ that the agent bound the tools it was supposed to.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
@@ -66,7 +67,7 @@ class ScriptedToolCallingModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "scripted-tool-calling"
 
-    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> "ScriptedToolCallingModel":
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> ScriptedToolCallingModel:
         """Record which tools were bound, then return self.
 
         A real implementation converts each tool to a JSON schema and attaches

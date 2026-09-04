@@ -39,8 +39,8 @@ retrieval.md" survives re-chunking.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 
 def recall_at_k(retrieved: Sequence[str], relevant: Sequence[str], k: int | None = None) -> float:

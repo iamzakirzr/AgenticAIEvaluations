@@ -57,15 +57,14 @@ for path in (str(_ROOT), str(_ROOT / "02_langchain"), str(_ROOT / "03_langgraph"
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import langwatch  # noqa: E402
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
+import langwatch
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from core.trace import RagTrace  # noqa: E402
-
+from core.trace import RagTrace
 
 # ===========================================================================
 # A TRAP THAT SILENTLY LOSES YOUR DATA
@@ -171,7 +170,9 @@ def answer_with_tracing(pipeline, question: str, offline: bool = True) -> RagTra
     back. Recording only latency is the most common instrumentation mistake --
     it tells you something is wrong without ever telling you what.
     """
-    with traced_rag_answer(question, offline=offline) as trace:
+    # The trace context is what nests the spans below; we do not need the
+    # object itself any more, because evaluations attach to a span.
+    with traced_rag_answer(question, offline=offline):
         # ---- retrieval span ------------------------------------------------
         with langwatch.span(name="retrieve", type="rag") as span:
             started = time.perf_counter()

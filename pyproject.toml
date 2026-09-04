@@ -98,4 +98,17 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-ignore = ["E402"]  # lesson files import after the compat shim on purpose
+ignore = [
+    # Lesson files MUST import after core.compat.bootstrap() runs, or `import
+    # ragas` fails. See core/compat.py -- this is load-bearing, not a style
+    # preference.
+    "E402",
+    # Blind `except Exception` is correct in the health checks
+    # (core.providers.ollama_available and friends): any failure whatsoever
+    # means "the server is not usable", and enumerating every possible
+    # transport error would be less reliable, not more.
+    "BLE001",
+    # Pydantic model fields legitimately have mutable defaults; pydantic
+    # handles the copying that makes this safe.
+    "RUF012",
+]

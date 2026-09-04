@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from core import compat
-from core.golden import REFUSAL, VALID_CATEGORIES, corpus_doc_ids, iter_corpus, load_golden
+from core.golden import REFUSAL, VALID_CATEGORIES, corpus_doc_ids, iter_corpus
 from core.metrics import (
     evaluate_retrieval,
     hit_rate,
@@ -24,7 +24,6 @@ from core.metrics import (
     reciprocal_rank,
 )
 from core.providers import LexicalEmbeddings, cosine_similarity, tokenize
-
 
 # ===========================================================================
 # COMPATIBILITY SHIM

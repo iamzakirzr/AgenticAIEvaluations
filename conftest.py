@@ -49,10 +49,13 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.config import settings  # noqa: E402
-from core.golden import load_golden  # noqa: E402
-from core.providers import LexicalEmbeddings, installed_ollama_models, ollama_available  # noqa: E402
-
+from core.config import settings
+from core.golden import load_golden
+from core.providers import (
+    LexicalEmbeddings,
+    installed_ollama_models,
+    ollama_available,
+)
 
 # ---------------------------------------------------------------------------
 # Skip helpers -- give a PRECISE reason, never a generic failure.

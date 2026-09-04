@@ -49,14 +49,14 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from core.compat import bootstrap  # noqa: E402
+from core.compat import bootstrap
 
 bootstrap()
 
-from ragas import EvaluationDataset, SingleTurnSample  # noqa: E402
+from ragas import EvaluationDataset, SingleTurnSample
 
-from core.golden import GoldenItem  # noqa: E402
-from core.trace import RagTrace  # noqa: E402
+from core.golden import GoldenItem
+from core.trace import RagTrace
 
 
 def rag_trace_to_sample(trace: RagTrace, item: GoldenItem | None = None) -> SingleTurnSample:

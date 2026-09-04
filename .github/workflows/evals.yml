@@ -1,0 +1,93 @@
+# =============================================================================
+# TWO-TIER EVALUATION CI
+# =============================================================================
+# The design decision this file encodes:
+#
+#   PR GATE     runs only tests that need NO model. Deterministic, free,
+#               finishes in seconds. Fails a pull request that regresses
+#               retrieval quality, prompt structure, agent trajectories,
+#               dataset integrity or instrumentation.
+#
+#   NIGHTLY     would run the judged tier against a real model. It is NOT a
+#               PR gate, because judged metrics are slow, cost GPU time, and
+#               are non-deterministic -- gating on them produces red builds
+#               from sampling noise, and within a fortnight everyone learns
+#               to ignore CI.
+#
+# That split is the whole reason the fast tier was built to be genuinely
+# meaningful rather than a smoke test. 154 tests, ~2 seconds, no GPU.
+# =============================================================================
+
+name: evaluations
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fast-tier:
+    name: Fast tier (no model required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        # Exact pins in pyproject.toml. All five libraries in this curriculum
+        # have made breaking changes across minor versions, so an unpinned
+        # install would produce a CI failure that has nothing to do with the
+        # pull request.
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Lint
+        run: |
+          .venv/bin/ruff check .
+
+      - name: Run the fast tier
+        # The default addopts in pyproject.toml deselect the judge/ollama/saas
+        # markers, so this runs only what is deterministic and free.
+        env:
+          DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+          DEEPEVAL_UPDATE_WARNING_OPT_OUT: "YES"
+        run: .venv/bin/python -m pytest -q
+
+      - name: Retrieval quality report
+        # Prints the retrieval curve so a reviewer can see the effect of a
+        # chunking or retrieval change in the PR checks, not just pass/fail.
+        run: .venv/bin/python 01_embeddings/experiment_chunk_size.py
+
+  judged-tier:
+    name: Judged tier (needs a model - manual only)
+    runs-on: ubuntu-latest
+    # Never runs automatically. GitHub-hosted runners have no GPU, so a real
+    # judged run needs a self-hosted runner with Ollama, or an API-backed
+    # judge. Enable it deliberately, not by default.
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Explain what would run here
+        run: |
+          echo "The judged tier needs a running Ollama server:"
+          echo "  ollama serve"
+          echo "  ollama pull llama3.1:8b && ollama pull nomic-embed-text"
+          echo "  pytest -m judge -v"
+          echo ""
+          echo "Before trusting any of those scores, calibrate the judge:"
+          echo "  python 04_deepeval/calibrate.py"
+          echo "A judge scoring Cohen's kappa below ~0.4 should gate nothing."

@@ -223,7 +223,6 @@ def run_calibration(judge_model: str | None = None, threshold: float = 0.8) -> C
     from deepeval.test_case import LLMTestCase
     from ollama_judge import JudgeFailure, OllamaJudge
 
-    from core.config import settings
 
     judge = OllamaJudge(model=judge_model)
     human_labels: list[int] = []

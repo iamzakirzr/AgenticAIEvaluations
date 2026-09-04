@@ -24,10 +24,10 @@ deterministic.
 from __future__ import annotations
 
 import pytest
-from agent import ResearchAgent, build_offline_agent, bind_default_retriever
+from agent import bind_default_retriever, build_offline_agent
 from langchain_core.messages import AIMessage, ToolMessage
 from scripted_model import ScriptedToolCallingModel, final_answer, tool_call
-from tools import ALL_TOOLS, list_documents, reciprocal_rank, refuse, search_knowledge_base
+from tools import ALL_TOOLS, reciprocal_rank, refuse, search_knowledge_base
 
 
 @pytest.fixture(scope="module", autouse=True)

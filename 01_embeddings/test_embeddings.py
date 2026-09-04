@@ -13,7 +13,6 @@ delete the overlap.
 from __future__ import annotations
 
 import pytest
-
 from chunking import (
     chunk_stats,
     fixed_size_chunks,
