@@ -38,7 +38,7 @@ for path in (str(_HERE), str(_HERE.parent / "02_langchain")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from adapters import rag_trace_to_sample, sample_to_kwargs, traces_to_dataset
+from ragas_adapters import rag_trace_to_sample, sample_to_kwargs, traces_to_dataset
 from pipeline import build_offline_pipeline
 from ragas_setup import build_ragas_embeddings, build_ragas_llm, ragas_ready
 

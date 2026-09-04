@@ -42,7 +42,7 @@ for path in (str(_HERE), str(_HERE.parent / "02_langchain")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from adapters import rag_trace_to_test_case
+from deepeval_adapters import rag_trace_to_test_case
 from deepeval.metrics import ExactMatchMetric, PatternMatchMetric
 from deepeval.test_case import LLMTestCase
 from pipeline import RagPipeline, build_offline_pipeline
