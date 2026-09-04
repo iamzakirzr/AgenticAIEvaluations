@@ -36,8 +36,14 @@ dependencies = [
     # which is why we can unit-test our instrumentation offline.
     "langwatch==1.3.1",
 
-    # --- Vector store + serving ------------------------------------------
-    "chromadb==1.5.9",
+    # --- Serving ----------------------------------------------------------
+    # NOTE: there is no vector-database dependency here on purpose. LangChain
+    # ships InMemoryVectorStore in langchain-core, and it does brute-force
+    # EXACT search -- which core/corpus/vector_stores.md explains is the
+    # correct default below ~100k chunks, not a shortcut. Adding Chroma or
+    # FAISS here would buy persistence and approximate search, and cost an
+    # entire class of recall bugs. 02_langchain/README.md shows how to swap
+    # one in when you actually need it.
     "fastapi",
     "uvicorn",
 
