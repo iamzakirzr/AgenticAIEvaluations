@@ -50,6 +50,26 @@ def test_shim_reports_whether_it_is_still_needed():
     assert still_needed is True
 
 
+def test_is_shim_needed_ignores_our_own_stub():
+    """Regression test for a bug this repo actually shipped and then caught.
+
+    The naive implementation of is_shim_needed() just tries to import the
+    module. But once the shim is installed, OUR STUB is in sys.modules, so the
+    import succeeds -- and the function reports "shim not needed" precisely
+    because the shim is working.
+
+    The symptom was a test that passed or failed depending on whether anything
+    had imported ragas earlier in the same pytest session. Order-dependent
+    tests are the worst kind, because they look flaky rather than wrong.
+
+    The fix is a marker attribute on the stub, asserted here.
+    """
+    compat.bootstrap()  # guarantee the stub is installed
+    assert compat.is_shim_needed() is True, (
+        "is_shim_needed() was fooled by our own stub -- the marker check broke"
+    )
+
+
 def test_bootstrap_is_idempotent():
     """Calling bootstrap() repeatedly must be harmless.
 

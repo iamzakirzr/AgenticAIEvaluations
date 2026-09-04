@@ -92,12 +92,36 @@ class _UnavailableChatVertexAI:
         )
 
 
+# Marker attribute so we can recognise our own stub in sys.modules and never
+# mistake it for the real module.
+_STUB_MARKER = "__core_compat_stub__"
+
+
 def is_shim_needed() -> bool:
-    """Return True if the real langchain_community Vertex AI module is absent.
+    """Return True if the REAL langchain_community Vertex AI module is absent.
 
     Used by the test suite: when this starts returning False, the upstream
     problem is fixed and `install_ragas_langchain_shim()` can be deleted.
+
+    SUBTLETY worth understanding, because it is a bug we actually shipped and
+    then caught: the obvious implementation is
+
+        try: __import__(_MISSING_MODULE); return False
+        except ImportError: return True
+
+    ...which is WRONG once the shim is installed. Our stub lives in
+    sys.modules, so `__import__` finds it and happily reports success -- the
+    function then claims the shim is unnecessary precisely because the shim is
+    working. The result is a test that passes or fails depending on whether
+    anything imported ragas earlier in the session.
+
+    So we check for our marker first and only fall back to a real import.
     """
+    existing = sys.modules.get(_MISSING_MODULE)
+    if existing is not None:
+        # If it is our stub, the real module is still missing.
+        return getattr(existing, _STUB_MARKER, False)
+
     try:
         __import__(_MISSING_MODULE)
     except ImportError:
@@ -132,6 +156,8 @@ def install_ragas_langchain_shim() -> bool:
     stub.__doc__ = (
         "Compatibility stub installed by core.compat. Not a real integration."
     )
+    # Marker so is_shim_needed() can tell our stub from the genuine article.
+    setattr(stub, _STUB_MARKER, True)
     sys.modules[_MISSING_MODULE] = stub
     return True
 
