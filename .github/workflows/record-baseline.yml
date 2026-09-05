@@ -1,0 +1,124 @@
+# =============================================================================
+# WORKFLOW 4 of 4 -- RECORDING A NEW BASELINE
+# =============================================================================
+# Manual only. Records the current scores as the reference the nightly gate
+# compares against, and opens a PR containing the change.
+#
+# WHY A PULL REQUEST AND NOT A DIRECT COMMIT
+#   Moving the baseline is how you make a regression disappear. Do it silently
+#   on a schedule and quality can drift downward forever, one "re-record"
+#   at a time, with every individual step inside the noise band.
+#
+#   Putting it in a PR makes it a REVIEWED decision with a diff showing exactly
+#   which numbers moved and by how much. That is the whole control.
+#
+# WHEN RE-RECORDING IS LEGITIMATE
+#   - You deliberately changed a model, chunk size or prompt, and the new
+#     numbers are the new truth. (The gate already detects this via the
+#     fingerprint and disables itself, so re-recording is the follow-up.)
+#   - You expanded the golden dataset, so the old means are not comparable.
+#   - You improved the system and want the higher bar defended.
+#
+# WHEN IT IS NOT
+#   - The gate is failing and you want CI green. That is the regression the
+#     gate exists to report.
+# =============================================================================
+
+name: record evaluation baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: "Runs to average (more runs = a better noise estimate)"
+        default: "5"
+      deterministic:
+        description: "Record retrieval-only metrics, with no model"
+        type: boolean
+        default: true
+      reason:
+        description: "Why the baseline is moving (goes in the PR body)"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Start Ollama
+        if: ${{ github.event.inputs.deterministic != 'true' }}
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:11434/api/tags >/dev/null && break
+            sleep 2
+          done
+          ollama pull llama3.1:8b
+          ollama pull nomic-embed-text
+
+      - name: Show the CURRENT baseline before overwriting it
+        # So the PR body can show what is being replaced, and so an
+        # accidental run leaves a record of what was there.
+        run: |
+          mkdir -p .artifacts
+          if [ -f baselines/baseline.json ]; then
+            cp baselines/baseline.json .artifacts/previous-baseline.json
+            echo "Existing baseline:"; cat baselines/baseline.json
+          else
+            echo "No existing baseline."
+          fi
+
+      - name: Record
+        run: |
+          .venv/bin/python scripts/run_regression_gate.py \
+            --record \
+            --repetitions "${{ github.event.inputs.repetitions }}" \
+            ${{ github.event.inputs.deterministic == 'true' && '--deterministic' || '' }} \
+            | tee .artifacts/record.txt
+
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/record-eval-baseline
+          title: "chore: record a new evaluation baseline"
+          commit-message: "chore: record a new evaluation baseline"
+          labels: evaluation
+          body: |
+            Recorded by the `record evaluation baseline` workflow.
+
+            **Reason given:** ${{ github.event.inputs.reason }}
+
+            - repetitions: `${{ github.event.inputs.repetitions }}`
+            - deterministic: `${{ github.event.inputs.deterministic }}`
+            - [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ### Review checklist
+
+            Moving a baseline is how a regression disappears. Before approving,
+            check the diff and confirm:
+
+            - [ ] Every metric that moved DOWN has an explanation in the reason above.
+            - [ ] The `fingerprint` block matches the configuration you intend to
+                  defend from now on (models, chunk size, top_k, temperature).
+            - [ ] The recorded `values` arrays have enough entries to give the gate
+                  a real noise band. A single-run baseline gates on `min_delta`
+                  alone and will either flap or catch nothing.
+            - [ ] This is not being merged simply to turn a failing gate green.
