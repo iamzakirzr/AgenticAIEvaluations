@@ -4,12 +4,12 @@ A hands-on curriculum for **building and evaluating** RAG pipelines, chatbots an
 agents — with LangChain, LangGraph, LangWatch, DeepEval and RAGAS, running
 entirely against **local open-source models via Ollama**.
 
-Seven lessons. Each builds something, then measures it. **337 tests run in ~15
+Seven lessons. Each builds something, then measures it. **406 tests run in ~16
 seconds with no model, no GPU and no API key**, so you can explore and break
 things freely before ever loading a model.
 
 ```bash
-make setup && make test        # 337 tests, ~15s, nothing to install beyond Python
+make setup && make test        # 406 tests, ~16s, nothing to install beyond Python
 make lesson-embeddings         # the step-by-step walkthrough
 make chat                      # the chatbot at http://localhost:8000
 ```
@@ -34,6 +34,23 @@ from work worth paying for, and each has a lesson here:
 
 ---
 
+## New to this? Start at zero
+
+**[00_start_here](00_start_here/)** is the on-ramp for QA and SDET engineers:
+a translation table from concepts you already own (test oracle, boundary
+values, flaky tests, coverage, CI gates) to their AI-evaluation equivalents,
+how AI/ML actually works with no maths, a full glossary, and a 4-week plan.
+
+```bash
+make hello     # your first evaluation: 60 lines, 2 seconds, no model needed
+```
+
+Then **[INTERVIEW.md](INTERVIEW.md)** — 15 scenario questions with
+weak-vs-strong answer contrasts, a 60-second project pitch, and questions to
+ask the interviewer.
+
+---
+
 ## The learning path
 
 | # | Lesson | You build | You learn |
@@ -44,6 +61,15 @@ from work worth paying for, and each has a lesson here:
 | 04 | **[deepeval](04_deepeval/)** | An Ollama judge + calibration | The metric catalogue, and Cohen's kappa |
 | 05 | **[ragas](05_ragas/)** | The same pipeline, scored again | A second opinion, and where two libraries disagree |
 | 06 | **[langwatch](06_langwatch/)** | Tracing + online evaluation | Evaluating traffic you cannot label |
+
+Each lesson also has **advanced topics** beyond the core walkthrough:
+
+| Lesson | Advanced module | Covers |
+|---|---|---|
+| 02 | `advanced_retrieval.py` | BM25, RRF, hybrid search, MMR, reranking, query rewriting, HyDE, multi-query, conversational retrieval |
+| 03 | `advanced_graph.py` | parallel fan-out/fan-in, reducers, subgraphs, streaming |
+| 04 | `advanced_deepeval.py` | red teaming, synthetic data, multi-turn metrics, `assert_test` |
+| 05 | `advanced_ragas.py` | test-set generation and the review queue |
 
 Then **[PRODUCTION.md](PRODUCTION.md)** — every lesson also ships a
 `production_*.py` scenario covering the failures that actually take eval systems
@@ -60,7 +86,7 @@ code is heavily commented and meant to be read alongside it.
 
 ```bash
 make setup          # creates .venv, installs everything (needs `uv`)
-make test           # 337 fast tests -- no model required
+make test           # 406 fast tests -- no model required
 ```
 
 For the judged tiers you need [Ollama](https://ollama.com):
@@ -82,7 +108,7 @@ This is the design decision worth stealing:
 
 | Tier | Marker | Needs | Speed | Runs |
 |---|---|---|---|---|
-| **Fast** | *(none)* | nothing | ~15s | every push |
+| **Fast** | *(none)* | nothing | ~16s | every push |
 | **Ollama** | `-m ollama` | a local model | minutes | on demand |
 | **Judged** | `-m judge` | a local model as judge | slow, noisy | nightly / manual |
 | **SaaS** | `-m saas` | a LangWatch account | — | never in CI |
@@ -104,6 +130,7 @@ what matters.
 ## What's in the repo
 
 ```
+00_start_here/       the on-ramp: QA-to-eval bridge, ML primer, glossary, hello_eval
 core/                shared spine -- config, providers, traces, dataset, metrics
   resilience.py      retry, timeout, circuit breaker, budget, bounded map
   baseline.py        variance-aware regression gating
