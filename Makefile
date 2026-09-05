@@ -54,6 +54,25 @@ lesson-embeddings:  ## Run the embeddings walkthrough (prints, does not assert)
 chat:  ## Serve the RAG chatbot at http://localhost:8000
 	.venv/bin/uvicorn 02_langchain.server:app --reload --port 8000
 
+# --- Regression gating -------------------------------------------------------
+
+.PHONY: gate
+gate:  ## Compare current scores against the recorded baseline (CI's gate)
+	$(PY) scripts/run_regression_gate.py
+
+.PHONY: gate-fast
+gate-fast:  ## Same gate, retrieval metrics only -- no model needed
+	$(PY) scripts/run_regression_gate.py --deterministic
+
+.PHONY: baseline
+baseline:  ## Record the CURRENT scores as the new reference. Review the diff!
+	@echo "Moving a baseline is how a regression disappears. Check the diff."
+	$(PY) scripts/run_regression_gate.py --record --repetitions 5
+
+.PHONY: calibrate
+calibrate:  ## Measure whether your judge agrees with human labels (Cohen's kappa)
+	$(PY) 04_deepeval/calibrate.py
+
 # --- Experiments -------------------------------------------------------------
 
 .PHONY: experiment-chunking

@@ -301,6 +301,45 @@ def test_one_failure_does_not_destroy_the_other_results():
     assert isinstance(failed[0][1], ConnectError)
 
 
+def test_a_keyboard_interrupt_is_not_swallowed_as_an_item_failure():
+    """Ctrl-C during a long sweep must STOP it.
+
+    Catching BaseException here would store the interrupt as if it were one
+    item's error and carry on to the next future -- so the operator's Ctrl-C
+    would do nothing except make one row fail. Exception-only is the fix.
+    """
+
+    def interrupting(x):
+        if x == 2:
+            raise KeyboardInterrupt("operator pressed Ctrl-C")
+        return x
+
+    with pytest.raises(KeyboardInterrupt):
+        map_bounded(interrupting, [1, 2, 3], max_workers=1)
+
+
+def test_retry_does_not_treat_an_interrupt_as_a_transient_failure():
+    def interrupting():
+        raise KeyboardInterrupt("Ctrl-C")
+
+    with pytest.raises(KeyboardInterrupt):
+        retry(interrupting, RetryPolicy(max_attempts=5), sleep=lambda _: None)
+
+
+def test_an_interrupt_does_not_trip_the_circuit_breaker():
+    """A Ctrl-C is not evidence the downstream service is unhealthy.
+
+    Counting it toward the failure threshold could open the circuit and reject
+    every subsequent request for no reason.
+    """
+    breaker = CircuitBreaker(failure_threshold=1, reset_after=60)
+
+    with pytest.raises(KeyboardInterrupt):
+        breaker.call(lambda: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    assert breaker.state == "closed"
+
+
 def test_map_bounded_handles_an_empty_input():
     assert map_bounded(lambda x: x, [], max_workers=4) == []
 
@@ -451,6 +490,38 @@ def test_a_new_metric_is_reported_but_not_gated():
     assert "not in baseline" in new.reason
 
 
+def test_an_uncompared_metric_never_renders_as_stable():
+    """A presentation bug that would mislead every reviewer who skims.
+
+    With no baseline, rendering "baseline 0.000 | delta +0.000 | stable" reads
+    as a comparison that passed. None happened. "not compared" with em-dashes
+    keeps 'not measured' distinct from 'measured and unchanged'.
+    """
+    result = compare([MetricSample("brand_new", [0.87])], baseline=None)
+    md = result.markdown()
+
+    assert "not compared" in md
+    assert "stable" not in md
+    assert "0.000" not in md, "a zero baseline was rendered for an uncompared metric"
+    assert "0.870" in md, "the current value should still be shown"
+
+    assert result.comparisons[0].compared is False
+
+
+def test_a_metric_missing_from_the_baseline_is_also_marked_uncompared():
+    baseline = Baseline().add(MetricSample("faithfulness", [0.9, 0.9, 0.9]))
+    result = compare(
+        [MetricSample("faithfulness", [0.9, 0.9, 0.9]), MetricSample("added_later", [0.4])],
+        baseline,
+        fingerprint=baseline.fingerprint,
+    )
+
+    by_name = {c.name: c for c in result.comparisons}
+    assert by_name["faithfulness"].compared is True
+    assert by_name["added_later"].compared is False
+    assert "not compared" in result.markdown()
+
+
 def test_single_run_baselines_warn_that_the_band_is_a_guess():
     baseline = Baseline().add(MetricSample("faithfulness", [0.90]))
     result = compare(
@@ -484,6 +555,19 @@ def test_markdown_report_is_pr_comment_shaped():
 # ===========================================================================
 # PERSISTENCE
 # ===========================================================================
+
+
+def test_total_observations_is_the_denominator_for_a_failure_rate():
+    """`n` counts usable scores; `total_observations` counts attempts.
+
+    Confusing the two makes a run where 8 of 10 calls failed report a 0%
+    failure rate, because 2/2 succeeded.
+    """
+    sample = MetricSample(name="m", values=[0.9, 0.8], failures=8)
+
+    assert sample.n == 2
+    assert sample.total_observations == 10
+    assert sample.failures / sample.total_observations == 0.8
 
 
 def test_baseline_round_trips_through_json(tmp_path):

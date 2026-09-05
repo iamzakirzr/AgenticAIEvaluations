@@ -57,10 +57,11 @@ from __future__ import annotations
 
 import json
 import statistics
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from core.config import ARTIFACTS_DIR, settings
 
@@ -91,7 +92,13 @@ class MetricSample:
 
     @property
     def n(self) -> int:
+        """Number of USABLE observations. Excludes failures by construction."""
         return len(self.values)
+
+    @property
+    def total_observations(self) -> int:
+        """Attempts, successful or not. The denominator for a failure rate."""
+        return self.n + self.failures
 
     @property
     def mean(self) -> float:
@@ -111,7 +118,7 @@ class MetricSample:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "MetricSample":
+    def from_dict(cls, raw: dict[str, Any]) -> MetricSample:
         return cls(
             name=raw["name"],
             values=[float(v) for v in raw.get("values", [])],
@@ -122,7 +129,7 @@ class MetricSample:
 
 def measure_repeatedly(
     name: str,
-    run: "callable[[], float]",
+    run: callable[[], float],
     n: int = 3,
     higher_is_better: bool = True,
 ) -> MetricSample:
@@ -136,7 +143,7 @@ def measure_repeatedly(
     for _ in range(n):
         try:
             sample.values.append(float(run()))
-        except Exception:  # noqa: BLE001 - counted, never scored
+        except Exception:
             sample.failures += 1
     return sample
 
@@ -170,11 +177,11 @@ class Baseline:
     fingerprint: dict[str, Any] = field(default_factory=current_fingerprint)
     git_sha: str = ""
     created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+        default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds")
     )
     note: str = ""
 
-    def add(self, sample: MetricSample) -> "Baseline":
+    def add(self, sample: MetricSample) -> Baseline:
         self.metrics[sample.name] = sample
         return self
 
@@ -188,7 +195,7 @@ class Baseline:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "Baseline":
+    def from_dict(cls, raw: dict[str, Any]) -> Baseline:
         return cls(
             metrics={
                 name: MetricSample.from_dict(value)
@@ -211,7 +218,7 @@ class Baseline:
         return target
 
     @classmethod
-    def load(cls, path: Path | None = None) -> "Baseline | None":
+    def load(cls, path: Path | None = None) -> Baseline | None:
         target = path or DEFAULT_BASELINE_PATH
         if not target.exists():
             return None
@@ -234,8 +241,16 @@ class MetricComparison:
     improved: bool
     reason: str
 
+    # False when there was nothing to compare against (no baseline at all, or
+    # a metric absent from it). Keeps "not measured" distinct from "measured
+    # and unchanged" -- conflating those is how a new metric silently reads as
+    # a passing one.
+    compared: bool = True
+
     @property
     def symbol(self) -> str:
+        if not self.compared:
+            return "not compared"
         if self.regressed:
             return "REGRESSION"
         if self.improved:
@@ -286,9 +301,19 @@ class GateResult:
         lines.append("| metric | baseline | current | delta | noise band | verdict |")
         lines.append("|---|---:|---:|---:|---:|---|")
         for c in sorted(self.comparisons, key=lambda x: x.name):
+            # An uncompared metric must NOT render as "baseline 0.000, delta
+            # +0.000, stable". That reads as a comparison that passed, when in
+            # fact none happened -- and a reviewer skimming the table would
+            # take a brand-new metric for a verified-unchanged one.
+            if c.compared:
+                baseline = f"{c.baseline_mean:.3f}"
+                delta = f"{c.delta:+.3f}"
+                band = f"±{c.noise_band:.3f}"
+            else:
+                baseline = delta = band = "--"
             lines.append(
-                f"| {c.name} | {c.baseline_mean:.3f} | {c.current_mean:.3f} | "
-                f"{c.delta:+.3f} | ±{c.noise_band:.3f} | {c.symbol} |"
+                f"| {c.name} | {baseline} | {c.current_mean:.3f} | "
+                f"{delta} | {band} | {c.symbol} |"
             )
 
         for warning in self.warnings:
@@ -353,6 +378,7 @@ def compare(
                     regressed=False,
                     improved=False,
                     reason="no baseline",
+                    compared=False,
                 )
                 for s in current_samples.values()
             ],
@@ -375,6 +401,7 @@ def compare(
                     regressed=False,
                     improved=False,
                     reason="new metric, not in baseline",
+                    compared=False,
                 )
             )
             continue
@@ -454,7 +481,7 @@ def git_sha() -> str:
             timeout=5,
             check=True,
         ).stdout.strip()
-    except Exception:  # noqa: BLE001 - absence of git is not an error here
+    except Exception:
         return ""
 
 

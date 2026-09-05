@@ -1,0 +1,150 @@
+# =============================================================================
+# WORKFLOW 2 of 4 -- THE NIGHTLY JUDGED RUN
+# =============================================================================
+# Runs the expensive tier: real Ollama, real judge, N repetitions, then gates
+# against the recorded baseline using the variance-aware comparison in
+# core/baseline.py.
+#
+# WHY NIGHTLY AND NOT ON EVERY PR
+#   A judged metric varies between identical runs. Gating a pull request on one
+#   makes CI a coin flip. Nightly gives you the same signal with a cadence that
+#   tolerates the runtime, and a failure here opens an issue rather than
+#   blocking someone's merge.
+#
+# WHY A SELF-HOSTED RUNNER
+#   GitHub-hosted runners have no GPU. llama3.1:8b on CPU is roughly an order
+#   of magnitude slower, which turns a 20-minute suite into an overnight job.
+#   Options, in order of preference:
+#     1. A self-hosted runner with a GPU and Ollama installed (this file).
+#     2. A hosted OpenAI-compatible endpoint -- set OLLAMA_BASE_URL to it and
+#        run on ubuntu-latest. The code needs no change; that portability is
+#        the entire point of core/providers.py.
+#     3. CPU-only on a schedule you do not watch, with a long timeout.
+# =============================================================================
+
+name: evals (nightly judged)
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: "How many times to repeat the suite (for the noise band)"
+        default: "3"
+      judge_model:
+        description: "Ollama tag for the judge"
+        default: "llama3.1:8b"
+
+permissions:
+  contents: read
+  issues: write   # to open an issue when a regression is detected
+
+jobs:
+  judged:
+    name: Judged tier
+    # Change to `[self-hosted, gpu]` once you have a runner. Kept as
+    # ubuntu-latest so the file is valid out of the box; the Ollama step
+    # below detects the absence of a GPU and skips rather than hanging.
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+      DEEPEVAL_UPDATE_WARNING_OPT_OUT: "YES"
+      CHAT_MODEL: ${{ github.event.inputs.judge_model || 'llama3.1:8b' }}
+      JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'llama3.1:8b' }}
+      EMBED_MODEL: nomic-embed-text
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Start Ollama and pull models
+        id: ollama
+        run: |
+          if ! command -v ollama >/dev/null 2>&1; then
+            curl -fsSL https://ollama.com/install.sh | sh
+          fi
+          ollama serve &
+          # Wait for the server rather than sleeping a fixed amount: a fixed
+          # sleep is either too short (flaky) or too long (wasteful), and on a
+          # cold runner model loading time varies a lot.
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:11434/api/tags >/dev/null; then
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            sleep 2
+          done
+          ollama pull "$JUDGE_MODEL"
+          ollama pull "$EMBED_MODEL"
+
+      - name: Calibrate the judge FIRST
+        # Deliberately before the metrics. If the judge cannot tell good from
+        # bad, every number produced afterwards is noise dressed as a
+        # measurement -- and you want that in the log above the scores, not
+        # discovered later.
+        continue-on-error: true
+        run: .venv/bin/python 04_deepeval/calibrate.py | tee .artifacts/calibration.txt
+
+      - name: Judged metrics
+        run: |
+          .venv/bin/python -m pytest -m judge -v \
+            --junitxml=.artifacts/junit-judged.xml \
+            | tee .artifacts/judged.txt
+
+      - name: Ollama tier (real models, no judging)
+        run: .venv/bin/python -m pytest -m ollama -v | tee .artifacts/ollama.txt
+
+      - name: Regression gate against the recorded baseline
+        id: gate
+        run: |
+          .venv/bin/python scripts/run_regression_gate.py \
+            --repetitions "${{ github.event.inputs.repetitions || '3' }}"
+
+      - name: Open an issue if the gate failed
+        if: failure() && steps.gate.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = 'The regression report artifact was not produced.';
+            try {
+              report = fs.readFileSync('.artifacts/regression_report.md', 'utf8');
+            } catch (e) { /* fall through to the default message */ }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Nightly evaluation regression (${new Date().toISOString().slice(0,10)})`,
+              body: [
+                'The nightly judged run detected a regression outside the noise band.',
+                '',
+                report,
+                '',
+                `[Run log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+                '',
+                'Before treating this as a real quality drop, check the calibration',
+                'output in the run artifacts. A judge whose Cohen\'s kappa has fallen',
+                'produces regressions that are not there.',
+              ].join('\n'),
+              labels: ['evaluation', 'regression'],
+            });
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-judged-artifacts
+          path: .artifacts/
+          retention-days: 30

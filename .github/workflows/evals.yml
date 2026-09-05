@@ -1,24 +1,20 @@
 # =============================================================================
-# TWO-TIER EVALUATION CI
+# WORKFLOW 1 of 4 -- THE PULL REQUEST GATE
 # =============================================================================
-# The design decision this file encodes:
+# Runs ONLY tests that need no model: deterministic, free, ~15 seconds.
 #
-#   PR GATE     runs only tests that need NO model. Deterministic, free,
-#               finishes in seconds. Fails a pull request that regresses
-#               retrieval quality, prompt structure, agent trajectories,
-#               dataset integrity or instrumentation.
+# Why this is the only thing gating a PR: judged metrics are slow, cost GPU
+# time, and vary between identical runs. Gate a pull request on one and the
+# build goes red on sampling noise, someone adds `continue-on-error: true`, and
+# within a fortnight nobody reads CI at all.
 #
-#   NIGHTLY     would run the judged tier against a real model. It is NOT a
-#               PR gate, because judged metrics are slow, cost GPU time, and
-#               are non-deterministic -- gating on them produces red builds
-#               from sampling noise, and within a fortnight everyone learns
-#               to ignore CI.
-#
-# That split is the whole reason the fast tier was built to be genuinely
-# meaningful rather than a smoke test. 154 tests, ~2 seconds, no GPU.
+# The fast tier is not a smoke test. With no model it covers retrieval quality,
+# chunking, dataset integrity, prompt structure, citation validation, agent
+# trajectories, loop detection, PII redaction, index-version drift, budgets,
+# the regression-gate maths and span instrumentation. 329 tests.
 # =============================================================================
 
-name: evaluations
+name: evals (PR gate)
 
 on:
   push:
@@ -26,9 +22,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write   # needed to post the metrics comment
+
+concurrency:
+  # Cancel superseded runs on the same branch. Without this a busy PR queues
+  # five runs of a suite whose only purpose is fast feedback.
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fast-tier:
-    name: Fast tier (no model required)
+    name: Fast tier (no model)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -40,54 +46,97 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.11
-
       - name: Install dependencies
-        # Exact pins in pyproject.toml. All five libraries in this curriculum
-        # have made breaking changes across minor versions, so an unpinned
-        # install would produce a CI failure that has nothing to do with the
-        # pull request.
+        # Exact pins from pyproject.toml. Every library in this stack has made
+        # breaking changes across minor versions, so an unpinned install would
+        # produce failures unrelated to the pull request. The `drift` workflow
+        # deliberately tests the unpinned case instead.
         run: |
           uv venv --python 3.11 .venv
           uv pip install --python .venv/bin/python -e ".[dev]"
 
       - name: Lint
-        run: |
-          .venv/bin/ruff check .
+        run: .venv/bin/ruff check .
 
-      - name: Run the fast tier
-        # The default addopts in pyproject.toml deselect the judge/ollama/saas
-        # markers, so this runs only what is deterministic and free.
+      - name: Fast tier
         env:
           DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
           DEEPEVAL_UPDATE_WARNING_OPT_OUT: "YES"
-        run: .venv/bin/python -m pytest -q
+        run: .venv/bin/python -m pytest -q --junitxml=.artifacts/junit.xml
 
       - name: Retrieval quality report
-        # Prints the retrieval curve so a reviewer can see the effect of a
-        # chunking or retrieval change in the PR checks, not just pass/fail.
-        run: .venv/bin/python 01_embeddings/experiment_chunk_size.py
-
-  judged-tier:
-    name: Judged tier (needs a model - manual only)
-    runs-on: ubuntu-latest
-    # Never runs automatically. GitHub-hosted runners have no GPU, so a real
-    # judged run needs a self-hosted runner with Ollama, or an API-backed
-    # judge. Enable it deliberately, not by default.
-    if: github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Explain what would run here
+        # Prints the chunk-size sweep so a reviewer can see the effect of a
+        # retrieval change in the checks output, not just pass/fail.
         run: |
-          echo "The judged tier needs a running Ollama server:"
-          echo "  ollama serve"
-          echo "  ollama pull llama3.1:8b && ollama pull nomic-embed-text"
-          echo "  pytest -m judge -v"
-          echo ""
-          echo "Before trusting any of those scores, calibrate the judge:"
-          echo "  python 04_deepeval/calibrate.py"
-          echo "A judge scoring Cohen's kappa below ~0.4 should gate nothing."
+          .venv/bin/python 01_embeddings/experiment_chunk_size.py \
+            | tee .artifacts/retrieval_report.txt
+
+      - name: Build the PR comment body
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### Evaluation gate"
+            echo
+            echo "Fast tier passed (no model required)."
+            echo
+            echo "<details><summary>Retrieval quality across chunk sizes</summary>"
+            echo
+            echo '```'
+            cat .artifacts/retrieval_report.txt
+            echo '```'
+            echo
+            echo "</details>"
+            if [ -f .artifacts/regression_report.md ]; then
+              echo
+              echo "<details><summary>Regression gate</summary>"
+              echo
+              cat .artifacts/regression_report.md
+              echo
+              echo "</details>"
+            fi
+          } > .artifacts/pr_comment.md
+
+      - name: Comment on the PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('.artifacts/pr_comment.md', 'utf8');
+            const marker = '### Evaluation gate';
+
+            // Update the existing comment rather than adding one per push.
+            // A PR with 20 near-identical bot comments is unreadable, and
+            // reviewers stop looking at any of them.
+            const {data: comments} = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(
+              c => c.user.type === 'Bot' && c.body.startsWith(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Upload artifacts
+        if: always()   # upload on failure too -- that is when you need them
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-artifacts
+          path: .artifacts/
+          retention-days: 14

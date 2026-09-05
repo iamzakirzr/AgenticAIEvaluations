@@ -50,8 +50,9 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 
@@ -158,7 +159,11 @@ def retry(
         stats.attempts = attempt
         try:
             return fn()
-        except BaseException as exc:  # noqa: BLE001 - re-raised below
+        except Exception as exc:
+            # Exception, NOT BaseException. KeyboardInterrupt and SystemExit
+            # must propagate instantly: an operator pressing Ctrl-C during a
+            # long sweep should stop it, not have the interrupt classified and
+            # possibly retried as a transient service error.
             stats.last_error = f"{type(exc).__name__}: {exc}"
 
             # Not retryable, or out of attempts -> give up immediately.
@@ -264,7 +269,10 @@ class CircuitBreaker:
 
         try:
             result = fn()
-        except BaseException:
+        except Exception:
+            # Exception only: a Ctrl-C is not evidence that the downstream
+            # service is unhealthy, and counting it toward the failure
+            # threshold could trip the breaker for every subsequent request.
             self.record_failure()
             raise
 
@@ -373,7 +381,7 @@ def map_bounded(
     items: Iterable[T],
     max_workers: int = 4,
     stop_on_error: bool = False,
-) -> list[tuple[T, object | None, BaseException | None]]:
+) -> list[tuple[T, object | None, Exception | None]]:
     """Run ``fn`` over ``items`` with at most ``max_workers`` in flight.
 
     Returns ``(item, result, error)`` triples IN INPUT ORDER, so a failure in
@@ -394,7 +402,7 @@ def map_bounded(
     from concurrent.futures import ThreadPoolExecutor
 
     items = list(items)
-    results: list[tuple[T, object | None, BaseException | None]] = [
+    results: list[tuple[T, object | None, Exception | None]] = [
         (item, None, None) for item in items
     ]
 
@@ -403,7 +411,11 @@ def map_bounded(
         for future, index in futures.items():
             try:
                 results[index] = (items[index], future.result(), None)
-            except BaseException as exc:  # noqa: BLE001 - recorded, not swallowed
+            except Exception as exc:
+                # Exception, NOT BaseException. Catching BaseException here
+                # would swallow a KeyboardInterrupt -- storing it as if it were
+                # one item's failure and carrying on to the next future -- so
+                # the operator's Ctrl-C would not stop the sweep at all.
                 results[index] = (items[index], None, exc)
                 if stop_on_error:
                     # Best effort: cancel work that has not started yet.

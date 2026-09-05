@@ -1,0 +1,155 @@
+# =============================================================================
+# WORKFLOW 3 of 4 -- THE DEPENDENCY DRIFT CANARY
+# =============================================================================
+# Installs the stack UNPINNED, on purpose, and reports what breaks.
+#
+# WHY THIS EXISTS, CONCRETELY
+#   This repo already documents one instance of the exact failure it watches
+#   for: `ragas` declares `langchain-community` without an upper bound, and
+#   when langchain-community 0.4.x removed `chat_models.vertexai`, `import
+#   ragas` stopped working entirely. See core/compat.py.
+#
+#   Exact pins protect the PR gate from that -- and also HIDE it. You find out
+#   months later, during an upgrade, with no idea which of forty version bumps
+#   did it.
+#
+#   This canary inverts that. It runs on a schedule, installs the newest
+#   compatible versions of everything, and opens an issue when the suite
+#   breaks. The pinned build stays green either way, so a broken canary never
+#   blocks anyone -- it just tells you an upgrade will need work, while the
+#   change that caused it is still small enough to bisect.
+#
+# THE RULE IT ENCODES: pin your builds, but monitor the unpinned world.
+# =============================================================================
+
+name: dependency drift canary
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  unpinned:
+    name: Unpinned install (allowed to fail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Never blocks anything. Its only job is to tell you early.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install the stack UNPINNED
+        id: install
+        run: |
+          uv venv --python 3.11 .venv
+          # Deliberately no version specifiers: resolve whatever is newest.
+          uv pip install --python .venv/bin/python \
+            langchain langchain-core langchain-community langchain-text-splitters \
+            langchain-ollama langchain-openai langgraph langwatch \
+            deepeval ragas fastapi uvicorn numpy httpx openai rich python-dotenv \
+            pytest pytest-asyncio ruff 2>&1 | tee .artifacts/unpinned-install.txt
+
+      - name: Record what actually got installed
+        if: always()
+        run: |
+          mkdir -p .artifacts
+          uv pip list --python .venv/bin/python | tee .artifacts/unpinned-versions.txt
+
+      - name: Can we even import the stack?
+        # A separate, earlier signal than the test suite. The ragas breakage
+        # this repo documents was an IMPORT failure -- the suite never got far
+        # enough to report anything more useful.
+        if: always()
+        id: imports
+        run: |
+          .venv/bin/python - <<'PY' 2>&1 | tee .artifacts/unpinned-imports.txt
+          import sys, traceback
+          sys.path.insert(0, ".")
+          failures = []
+          # core.compat installs the shim; try WITHOUT it first so we learn
+          # whether the upstream problem is finally fixed.
+          for label, code in [
+              ("ragas (no shim)", "import ragas"),
+              ("langchain", "import langchain"),
+              ("langgraph", "import langgraph"),
+              ("deepeval", "import deepeval"),
+              ("langwatch", "import langwatch"),
+              ("ragas (with shim)", "from core.compat import bootstrap; bootstrap(); import ragas"),
+          ]:
+              try:
+                  exec(code, {})
+                  print(f"OK    {label}")
+              except Exception as exc:
+                  print(f"FAIL  {label}: {type(exc).__name__}: {exc}")
+                  failures.append(label)
+          print(f"\n{len(failures)} import failure(s): {failures}")
+          PY
+
+      - name: Fast tier against unpinned versions
+        if: always()
+        id: tests
+        env:
+          DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+        run: .venv/bin/python -m pytest -q 2>&1 | tee .artifacts/unpinned-tests.txt
+
+      - name: Open an issue if the unpinned world has moved
+        if: failure() || steps.tests.outcome == 'failure' || steps.install.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (p) => { try { return fs.readFileSync(p, 'utf8').slice(-3000); }
+                                  catch (e) { return '(not produced)'; } };
+
+            const title = 'Dependency drift: the unpinned stack no longer works';
+
+            // One rolling issue, not one per week. A canary that opens 52
+            // issues a year gets muted, and then it is worth nothing.
+            const {data: existing} = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'dependency-drift',
+            });
+
+            const body = [
+              'The weekly unpinned install broke. **The pinned build is unaffected** --',
+              'this is early warning, not an outage.',
+              '',
+              '### Imports', '```', read('.artifacts/unpinned-imports.txt'), '```',
+              '### Test output (tail)', '```', read('.artifacts/unpinned-tests.txt'), '```',
+              '### Versions resolved', '```', read('.artifacts/unpinned-versions.txt'), '```',
+              '',
+              `[Run log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              '',
+              'If `ragas (no shim)` now says OK, the upstream breakage is fixed and',
+              '`core/compat.py` can be deleted -- `test_shim_reports_whether_it_is_still_needed`',
+              'will tell you the same thing.',
+            ].join('\n');
+
+            if (existing.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['dependency-drift'],
+              });
+            }
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-drift
+          path: .artifacts/
+          retention-days: 30

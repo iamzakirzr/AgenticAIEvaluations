@@ -342,7 +342,7 @@ class ProductionRagPipeline:
             text = call(self.pipeline.llm)
             self.stats.retries += stats_holder["retries"]
             return text, primary_name
-        except Exception:  # noqa: BLE001 - deliberately broad: any failure falls back
+        except Exception:
             self.stats.retries += stats_holder["retries"]
             if self.fallback_llm is None:
                 self.stats.failures += 1

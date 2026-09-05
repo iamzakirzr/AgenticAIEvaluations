@@ -25,7 +25,7 @@ from core.providers import LexicalEmbeddings, scripted_chat_model
 from core.resilience import Budget, BudgetExceeded, CircuitBreaker, RetryPolicy
 from core.trace import RagTrace, RetrievedChunk
 
-NO_SLEEP = lambda _: None  # noqa: E731 - keeps retry tests instant
+NO_SLEEP = lambda _: None
 
 
 class AlwaysFails:
@@ -200,7 +200,7 @@ def test_suggest_threshold_picks_a_value_from_data_and_prices_it():
     assert false_refusals == 0.0
 
     # Now with an answerable question that scores below the worst unanswerable:
-    threshold2, false2 = suggest_threshold([0.40, 0.09], [0.10])
+    _, false2 = suggest_threshold([0.40, 0.09], [0.10])
     assert false2 == 0.5, "the cost of the threshold was not reported"
 
 

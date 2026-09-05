@@ -102,7 +102,7 @@ class IndexFingerprint:
     chunk_overlap: int
 
     @classmethod
-    def from_embedder(cls, embedder, chunk_size: int, chunk_overlap: int) -> "IndexFingerprint":
+    def from_embedder(cls, embedder, chunk_size: int, chunk_overlap: int) -> IndexFingerprint:
         """Derive a fingerprint, probing the embedder for its real dimension.
 
         We probe rather than trust configuration, because the whole point is to
@@ -116,7 +116,7 @@ class IndexFingerprint:
             chunk_overlap=chunk_overlap,
         )
 
-    def explain_difference(self, other: "IndexFingerprint") -> str:
+    def explain_difference(self, other: IndexFingerprint) -> str:
         diffs = [
             f"{key}: index={getattr(self, key)!r} query={getattr(other, key)!r}"
             for key in ("embedder", "dimension", "chunk_size", "chunk_overlap")
@@ -179,9 +179,17 @@ class IncrementalIndex:
     doc_hashes: dict[str, str] = field(default_factory=dict, init=False)
     stats: IndexStats = field(default_factory=IndexStats, init=False)
 
-    # Cached vectors keyed by (doc_id, chunk_index) so an unchanged document is
-    # not re-embedded on the next build.
+    # Cached vectors per document, so an unchanged document is not re-embedded.
     _vectors: dict[str, list[list[float]]] = field(default_factory=dict, init=False)
+
+    # The chunking parameters the cache was built with. Content hashing alone
+    # is NOT a sufficient reuse key: if chunk_size changes, an unchanged
+    # document still produces a DIFFERENT NUMBER of chunks, so the cached
+    # vectors no longer line up with the re-chunked text. The matrix and the
+    # chunk list would silently disagree, and every score after that is
+    # meaningless. Tracked separately so a parameter change invalidates the
+    # cache the way a content change does.
+    _cached_chunking: tuple[int, int] | None = field(default=None, init=False)
 
     # ---- building ---------------------------------------------------------
 
@@ -224,6 +232,13 @@ class IncrementalIndex:
         """
         started = time.perf_counter()
         stats = IndexStats()
+
+        chunking = (self.chunk_size, self.chunk_overlap)
+        if self._cached_chunking is not None and self._cached_chunking != chunking:
+            # Chunking changed -> every cached vector is stale, however
+            # unchanged the source text is. See _cached_chunking above.
+            self._vectors.clear()
+        self._cached_chunking = chunking
 
         if not self.supports_incremental:
             # Drop the vector cache so every document is treated as changed.

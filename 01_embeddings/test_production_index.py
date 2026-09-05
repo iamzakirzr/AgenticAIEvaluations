@@ -331,6 +331,34 @@ def test_incremental_rebuild_matches_a_full_rebuild(corpus):
     assert a == b, "incremental and full rebuilds disagree -- the optimisation is unsafe"
 
 
+def test_changing_chunk_size_invalidates_the_vector_cache(corpus):
+    """A correctness bug found in review: content hashing is not enough.
+
+    If chunk_size changes, an unchanged document still produces a DIFFERENT
+    NUMBER of chunks. Reusing its cached vectors leaves the matrix and the
+    chunk list disagreeing about how many rows there are -- silently, with
+    every score afterwards meaningless.
+    """
+    index = build_stateless_index()
+    index.build(corpus)
+    assert index.matrix.shape[0] == len(index.chunks)
+
+    # Same content, different chunking.
+    index.chunk_size = 200
+    index.chunk_overlap = 20
+    stats = index.build(corpus)
+
+    assert stats.reused_documents == 0, "stale vectors were reused across a chunking change"
+    assert index.matrix.shape[0] == len(index.chunks), (
+        "matrix rows and chunk count disagree -- the index is corrupt"
+    )
+
+    # And it must still match a from-scratch build at the new setting.
+    fresh = build_stateless_index(chunk_size=200, chunk_overlap=20)
+    fresh.build(corpus)
+    assert len(index.chunks) == len(fresh.chunks)
+
+
 def test_content_hash_is_stable_across_processes():
     """sha256, not the builtin hash().
 
