@@ -90,7 +90,7 @@ markers = [
     "saas: requires a third-party SaaS account and API key",
 ]
 addopts = "-m 'not judge and not ollama and not saas' --strict-markers -q"
-testpaths = ["core", "01_embeddings", "02_langchain", "03_langgraph", "04_deepeval", "05_ragas", "06_langwatch"]
+testpaths = ["core", "scripts", "00_start_here", "01_embeddings", "02_langchain", "03_langgraph", "04_deepeval", "05_ragas", "06_langwatch"]
 asyncio_mode = "auto"
 
 [tool.ruff]

@@ -4,12 +4,12 @@ A hands-on curriculum for **building and evaluating** RAG pipelines, chatbots an
 agents — with LangChain, LangGraph, LangWatch, DeepEval and RAGAS, running
 entirely against **local open-source models via Ollama**.
 
-Seven lessons. Each builds something, then measures it. **406 tests run in ~16
+Seven lessons. Each builds something, then measures it. **411 tests run in ~16
 seconds with no model, no GPU and no API key**, so you can explore and break
 things freely before ever loading a model.
 
 ```bash
-make setup && make test        # 406 tests, ~16s, nothing to install beyond Python
+make setup && make test        # 411 tests, ~16s, nothing to install beyond Python
 make lesson-embeddings         # the step-by-step walkthrough
 make chat                      # the chatbot at http://localhost:8000
 ```
@@ -86,7 +86,7 @@ code is heavily commented and meant to be read alongside it.
 
 ```bash
 make setup          # creates .venv, installs everything (needs `uv`)
-make test           # 406 fast tests -- no model required
+make test           # 411 fast tests -- no model required
 ```
 
 For the judged tiers you need [Ollama](https://ollama.com):

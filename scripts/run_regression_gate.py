@@ -69,12 +69,17 @@ def build_pipeline(deterministic: bool):
     return RagPipeline(llm=get_chat_model(), embeddings=get_ollama_embeddings()).ingest()
 
 
-def measure_once(pipeline, items) -> dict[str, float]:
+def measure_once(pipeline, items, deterministic: bool = False) -> dict[str, float]:
     """One full pass over the dataset, returning aggregate metrics.
 
     Every metric here is reference-based and deterministic given the pipeline's
     output, so the only variance across repetitions comes from the MODEL, which
     is exactly the noise the gate needs to know about.
+
+    `deterministic` suppresses metrics that would be MEANINGLESS without a real
+    generator -- see the refusal metric below. Reporting a number that measures
+    a scripted placeholder rather than the system is the precise failure this
+    repository is about, and a gate report is the worst place to do it.
     """
     answerable = [i for i in items if i.is_answerable]
     unanswerable = [i for i in items if not i.is_answerable]
@@ -99,10 +104,16 @@ def measure_once(pipeline, items) -> dict[str, float]:
         "retrieval_ndcg": report.ndcg,
         "retrieval_precision": report.precision,
     }
-    if unanswerable:
-        # The single most important behavioural metric in the suite: does the
-        # system refuse when it should? A system that stops refusing looks fine
-        # on every retrieval metric.
+    # The single most important BEHAVIOURAL metric in the suite: does the system
+    # refuse when it should? A system that stops refusing looks perfectly
+    # healthy on every retrieval metric.
+    #
+    # But it is only meaningful with a REAL generator. In deterministic mode the
+    # answer is a fixed scripted string that never contains the refusal wording,
+    # so this would always report 0.000 -- a number describing the test harness,
+    # not the system. Publishing it in a gate report would invite someone to
+    # gate on it, and it can never move.
+    if unanswerable and not deterministic:
         metrics["refusal_rate_unanswerable"] = refusals / len(unanswerable)
     return metrics
 
@@ -114,7 +125,7 @@ def collect(repetitions: int, deterministic: bool) -> list[MetricSample]:
     runs: list[dict[str, float]] = []
     for index in range(repetitions):
         print(f"  run {index + 1}/{repetitions}...", flush=True)
-        runs.append(measure_once(pipeline, items))
+        runs.append(measure_once(pipeline, items, deterministic=deterministic))
 
     names = sorted({name for run in runs for name in run})
     return [
