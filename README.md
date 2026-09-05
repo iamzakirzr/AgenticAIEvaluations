@@ -4,12 +4,12 @@ A hands-on curriculum for **building and evaluating** RAG pipelines, chatbots an
 agents — with LangChain, LangGraph, LangWatch, DeepEval and RAGAS, running
 entirely against **local open-source models via Ollama**.
 
-Seven lessons. Each builds something, then measures it. **154 tests run in ~2
+Seven lessons. Each builds something, then measures it. **337 tests run in ~15
 seconds with no model, no GPU and no API key**, so you can explore and break
 things freely before ever loading a model.
 
 ```bash
-make setup && make test        # 154 tests, ~2s, nothing to install beyond Python
+make setup && make test        # 337 tests, ~15s, nothing to install beyond Python
 make lesson-embeddings         # the step-by-step walkthrough
 make chat                      # the chatbot at http://localhost:8000
 ```
@@ -45,6 +45,12 @@ from work worth paying for, and each has a lesson here:
 | 05 | **[ragas](05_ragas/)** | The same pipeline, scored again | A second opinion, and where two libraries disagree |
 | 06 | **[langwatch](06_langwatch/)** | Tracing + online evaluation | Evaluating traffic you cannot label |
 
+Then **[PRODUCTION.md](PRODUCTION.md)** — every lesson also ships a
+`production_*.py` scenario covering the failures that actually take eval systems
+down: embedding/index version drift, PII leaving your process, judge-failure
+budgets, NaN-poisoned means, variance-aware regression gates, human approval
+gates that fail closed, and four CI workflows.
+
 **Read them in order.** Each lesson's `README.md` is the written explanation; the
 code is heavily commented and meant to be read alongside it.
 
@@ -54,7 +60,7 @@ code is heavily commented and meant to be read alongside it.
 
 ```bash
 make setup          # creates .venv, installs everything (needs `uv`)
-make test           # 154 fast tests -- no model required
+make test           # 337 fast tests -- no model required
 ```
 
 For the judged tiers you need [Ollama](https://ollama.com):
@@ -76,7 +82,7 @@ This is the design decision worth stealing:
 
 | Tier | Marker | Needs | Speed | Runs |
 |---|---|---|---|---|
-| **Fast** | *(none)* | nothing | ~2s | every push |
+| **Fast** | *(none)* | nothing | ~15s | every push |
 | **Ollama** | `-m ollama` | a local model | minutes | on demand |
 | **Judged** | `-m judge` | a local model as judge | slow, noisy | nightly / manual |
 | **SaaS** | `-m saas` | a LangWatch account | — | never in CI |
@@ -88,7 +94,10 @@ slow judged tier stays credible because it isn't asked to do a job it's bad at.
 **What the fast tier actually covers**, with no model: retrieval quality
 (recall@k, MRR, nDCG), chunking behaviour, golden-dataset integrity, prompt
 structure, citation validation, agent trajectories, loop detection, judge
-calibration maths, and span instrumentation. That is most of what matters.
+calibration maths, span instrumentation — and every production scenario:
+retry/circuit-breaker/budget behaviour, index version drift, PII redaction,
+approval gates, NaN handling and the regression gate itself. That is most of
+what matters.
 
 ---
 
@@ -96,9 +105,13 @@ calibration maths, and span instrumentation. That is most of what matters.
 
 ```
 core/                shared spine -- config, providers, traces, dataset, metrics
+  resilience.py      retry, timeout, circuit breaker, budget, bounded map
+  baseline.py        variance-aware regression gating
   corpus/            8-document knowledge base (the thing being retrieved)
   golden.jsonl       48 labelled questions across 4 categories
-01_embeddings/ … 06_langwatch/     the lessons
+01_embeddings/ … 06_langwatch/     the lessons, each with a production_*.py
+scripts/             run_regression_gate.py -- the CI entry point
+.github/workflows/   4 workflows: PR gate, nightly judged, drift canary, baseline
 ```
 
 ### The golden dataset is the most important file
