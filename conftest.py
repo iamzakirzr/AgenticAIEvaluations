@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.config import settings
+from core.config import ARTIFACTS_DIR, settings
 from core.golden import load_golden
 from core.providers import (
     LexicalEmbeddings,
@@ -114,6 +114,61 @@ def unanswerable(golden):
 def lexical_embeddings():
     """Fresh, offline, deterministic embeddings for the fast tier."""
     return LexicalEmbeddings(dim=512)
+
+
+@pytest.fixture(autouse=True)
+def _artifacts_directory_stays_clean():
+    """Fail any test that writes into the shared `.artifacts/` directory.
+
+    =======================================================================
+    THE BUG THIS EXISTS TO PREVENT, WHICH ACTUALLY SHIPPED
+    =======================================================================
+    `gate()` defaulted its report path to `.artifacts/regression_report.md`.
+    A unit test called it, leaving fixture data on disk. The CI workflow
+    then inlined that file into a pull-request comment, which announced
+
+        | faithfulness | 0.900 | 1.000 | +0.100 | improved |
+
+    on a run where no faithfulness metric had been computed at all.
+
+    Nothing errored and nobody lied. A test's scratch output was simply
+    indistinguishable from a measurement -- which is precisely the failure
+    mode this entire repository is about, committed by the repository.
+
+    Fixing the three call sites was not enough: the next person to add a
+    fourth would reintroduce it, and a per-file tripwire only catches the
+    leak if it happens to run last. So the guard is autouse and global --
+    it snapshots the directory around EVERY test.
+
+    Tests that legitimately need to write a report should pass an explicit
+    `report_path=tmp_path / "..."`.
+    """
+    def snapshot() -> dict[str, float]:
+        if not ARTIFACTS_DIR.exists():
+            return {}
+        return {
+            p.name: p.stat().st_mtime_ns
+            for p in ARTIFACTS_DIR.iterdir()
+            if p.is_file()
+        }
+
+    before = snapshot()
+    yield
+    after = snapshot()
+
+    if after != before:
+        added = sorted(set(after) - set(before))
+        changed = sorted(k for k in set(after) & set(before) if after[k] != before[k])
+        # Clean up so one offending test does not cascade into failing every
+        # test that runs after it.
+        for name in added:
+            (ARTIFACTS_DIR / name).unlink(missing_ok=True)
+        raise AssertionError(
+            f"this test wrote to the shared artifacts directory "
+            f"(added={added}, modified={changed}). CI publishes those files as "
+            f"real evaluation results. Pass an explicit report_path/out path "
+            f"under tmp_path instead."
+        )
 
 
 def pytest_report_header(config):
