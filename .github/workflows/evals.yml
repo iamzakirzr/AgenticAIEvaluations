@@ -68,8 +68,22 @@ jobs:
         # Prints the chunk-size sweep so a reviewer can see the effect of a
         # retrieval change in the checks output, not just pass/fail.
         run: |
+          mkdir -p .artifacts
           .venv/bin/python 01_embeddings/experiment_chunk_size.py \
             | tee .artifacts/retrieval_report.txt
+
+      - name: Regression gate
+        # ACTUALLY RUN THE GATE. The earlier version only inlined
+        # .artifacts/regression_report.md "if it exists" -- and a unit test was
+        # leaving its fixture data there, so a PR comment once reported
+        # "faithfulness improved 0.900 -> 1.000" on a run that computed no
+        # faithfulness at all. Publishing a file you did not produce is how a
+        # test artifact becomes a measurement.
+        #
+        # --deterministic keeps this on retrieval metrics, which need no model.
+        # Exit 1 (regression) fails the job; exit 2 (invalid run) also fails,
+        # and the two are distinguishable in the log.
+        run: .venv/bin/python scripts/run_regression_gate.py --deterministic
 
       - name: Build the PR comment body
         if: github.event_name == 'pull_request'
@@ -86,14 +100,14 @@ jobs:
             echo '```'
             echo
             echo "</details>"
-            if [ -f .artifacts/regression_report.md ]; then
-              echo
-              echo "<details><summary>Regression gate</summary>"
-              echo
-              cat .artifacts/regression_report.md
-              echo
-              echo "</details>"
-            fi
+            echo
+            echo "<details><summary>Regression gate</summary>"
+            echo
+            # Produced by the step above in THIS run. Never "whatever file
+            # happens to be here" -- see the Regression gate step.
+            cat .artifacts/regression_report.md
+            echo
+            echo "</details>"
           } > .artifacts/pr_comment.md
 
       - name: Comment on the PR

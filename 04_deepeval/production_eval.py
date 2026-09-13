@@ -366,8 +366,19 @@ def gate(
     baseline_path: Path | None = None,
     sensitivity: float = 2.0,
     min_delta: float = 0.02,
+    report_path: Path | None = None,
 ):
-    """Compare N runs against the recorded baseline and write the CI report."""
+    """Compare N runs against the recorded baseline and write the CI report.
+
+    `report_path` exists so tests can write somewhere disposable. Defaulting to
+    the shared artifacts directory was a real bug: a unit test's fixture data
+    was left in `.artifacts/regression_report.md`, CI picked the file up, and a
+    PR comment reported "faithfulness improved 0.900 -> 1.000" -- a number that
+    came from a test, not a measurement.
+
+    That is the exact failure this whole repo is about, committed by the repo
+    itself. Tests must never write to a path that a pipeline reads.
+    """
     samples = samples_from_runs(reports)
     result = compare(
         samples,
@@ -375,5 +386,5 @@ def gate(
         sensitivity=sensitivity,
         min_delta=min_delta,
     )
-    write_report(result)
+    write_report(result, path=report_path)
     return result

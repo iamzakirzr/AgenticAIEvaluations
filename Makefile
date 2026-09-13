@@ -26,6 +26,12 @@ models:  ## Pull the Ollama models the judged tier needs
 	@echo "Optional second judge for the calibration lesson:"
 	@echo "  ollama pull qwen2.5:7b"
 
+# --- Learning ----------------------------------------------------------------
+
+.PHONY: hello
+hello:  ## START HERE: your first evaluation (60 lines, 2s, no model needed)
+	$(PY) 00_start_here/hello_eval.py
+
 # --- Tests -------------------------------------------------------------------
 
 .PHONY: test

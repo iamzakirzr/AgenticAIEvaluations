@@ -251,7 +251,9 @@ def test_gate_passes_when_scores_match_the_baseline(items, tmp_path):
     reports = EvalRunner(fake_answer, lambda i, t, m: (0.90, "r"), ["faithfulness"]).run_repeatedly(
         items[:5], n=3
     )
-    result = gate(reports, baseline_path=baseline_path)
+    result = gate(
+        reports, baseline_path=baseline_path, report_path=tmp_path / "report.md"
+    )
 
     assert result.passed
 
@@ -263,24 +265,29 @@ def test_gate_catches_a_real_regression(items, tmp_path):
     reports = EvalRunner(fake_answer, lambda i, t, m: (0.45, "r"), ["faithfulness"]).run_repeatedly(
         items[:5], n=3
     )
-    result = gate(reports, baseline_path=baseline_path)
+    result = gate(
+        reports, baseline_path=baseline_path, report_path=tmp_path / "report.md"
+    )
 
     assert not result.passed
     assert result.regressions[0].name == "faithfulness"
 
 
 def test_gate_writes_a_report_artifact(items, tmp_path):
+    """Note `report_path=tmp_path`. Writing to the shared .artifacts directory
+    here was a real bug: CI found this test's leftover file and published it in
+    a PR comment as though it were a measurement. See test_no_test_writes_to_
+    the_shared_artifacts_directory below."""
     baseline_path = tmp_path / "baseline.json"
+    report_path = tmp_path / "regression_report.md"
     record_baseline([MetricSample("faithfulness", [0.9, 0.9, 0.9])], path=baseline_path)
 
     reports = EvalRunner(fake_answer, perfect_scorer, ["faithfulness"]).run_repeatedly(
         items[:3], n=2
     )
-    result = gate(reports, baseline_path=baseline_path)
+    result = gate(reports, baseline_path=baseline_path, report_path=report_path)
 
-    from core.config import ARTIFACTS_DIR
-
-    written = (ARTIFACTS_DIR / "regression_report.md").read_text()
+    written = report_path.read_text()
     assert "| metric |" in written
     assert result.markdown() in written
 
