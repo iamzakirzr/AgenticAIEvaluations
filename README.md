@@ -4,14 +4,17 @@ A hands-on curriculum for **building and evaluating** RAG pipelines, chatbots an
 agents — with LangChain, LangGraph, LangWatch, DeepEval and RAGAS, running
 entirely against **local open-source models via Ollama**.
 
-Seven lessons. Each builds something, then measures it. **411 tests run in ~16
-seconds with no model, no GPU and no API key**, so you can explore and break
-things freely before ever loading a model.
+Eleven lessons, ending with an agent on a public endpoint, watched live. Each
+builds something, then measures it. **513 tests run with no model, no GPU and
+no API key**, so you can explore and break things freely before ever loading a
+model.
 
 ```bash
-make setup && make test        # 411 tests, ~16s, nothing to install beyond Python
-make lesson-embeddings         # the step-by-step walkthrough
+make setup && make test        # 513 tests, ~70s, nothing to install beyond Python
+make test-quick                # 430 of them in ~18s
+make hello                     # your first evaluation, 2 seconds
 make chat                      # the chatbot at http://localhost:8000
+make serve-agent               # the public agent + live dashboard on :8001
 ```
 
 ---
@@ -61,6 +64,10 @@ ask the interviewer.
 | 04 | **[deepeval](04_deepeval/)** | An Ollama judge + calibration | The metric catalogue, and Cohen's kappa |
 | 05 | **[ragas](05_ragas/)** | The same pipeline, scored again | A second opinion, and where two libraries disagree |
 | 06 | **[langwatch](06_langwatch/)** | Tracing + online evaluation | Evaluating traffic you cannot label |
+| 07 | **[prompt_chaining](07_prompt_chaining/)** | Four LCEL chain shapes, traced and contract-checked | Why four 95% links are an 81% chain, and how to give a failure an address |
+| 08 | **[mcp](08_mcp/)** | Three MCP servers, one agent | Five traps in multi-server MCP, and tool-selection accuracy |
+| 09 | **[serving](09_serving/)** | The agent on a public endpoint | What a public agent endpoint actually exposes, and the guards |
+| 10 | **[live_monitoring](10_live_monitoring/)** | Burn-rate alerting + a live dashboard | Why you cannot measure quality live, and what you can do instead |
 
 Each lesson also has **advanced topics** beyond the core walkthrough:
 
@@ -70,6 +77,9 @@ Each lesson also has **advanced topics** beyond the core walkthrough:
 | 03 | `advanced_graph.py` | parallel fan-out/fan-in, reducers, subgraphs, streaming |
 | 04 | `advanced_deepeval.py` | red teaming, synthetic data, multi-turn metrics, `assert_test` |
 | 05 | `advanced_ragas.py` | test-set generation and the review queue |
+| 08 | `measure_threshold.py` | whether a similarity threshold separates signal from noise (it does not, here) |
+| 09 | `Dockerfile` | deploying the gateway, and what matters more than the image |
+| 10 | `dashboard.py` | the live page, and what it deliberately refuses to show |
 
 Then **[PRODUCTION.md](PRODUCTION.md)** — every lesson also ships a
 `production_*.py` scenario covering the failures that actually take eval systems
@@ -86,7 +96,7 @@ code is heavily commented and meant to be read alongside it.
 
 ```bash
 make setup          # creates .venv, installs everything (needs `uv`)
-make test           # 411 fast tests -- no model required
+make test           # 513 fast tests -- no model required
 ```
 
 For the judged tiers you need [Ollama](https://ollama.com):
@@ -108,7 +118,7 @@ This is the design decision worth stealing:
 
 | Tier | Marker | Needs | Speed | Runs |
 |---|---|---|---|---|
-| **Fast** | *(none)* | nothing | ~16s | every push |
+| **Fast** | *(none)* | nothing | ~70s | every push |
 | **Ollama** | `-m ollama` | a local model | minutes | on demand |
 | **Judged** | `-m judge` | a local model as judge | slow, noisy | nightly / manual |
 | **SaaS** | `-m saas` | a LangWatch account | — | never in CI |
@@ -137,6 +147,11 @@ core/                shared spine -- config, providers, traces, dataset, metrics
   corpus/            8-document knowledge base (the thing being retrieved)
   golden.jsonl       48 labelled questions across 4 categories
 01_embeddings/ … 06_langwatch/     the lessons, each with a production_*.py
+07_prompt_chaining/  LCEL shapes, link tracing, boundary contracts
+08_mcp/              three real MCP servers + one agent over all of them
+  servers/           corpus, web and evaluator servers (real subprocesses)
+09_serving/          the public gateway: auth, allowlists, budgets, guards
+10_live_monitoring/  burn-rate alerting, drift, and the label queue
 scripts/             run_regression_gate.py -- the CI entry point
 .github/workflows/   4 workflows: PR gate, nightly judged, drift canary, baseline
 ```
@@ -212,6 +227,25 @@ versions, and pinned as a test:
 - **Recall is saturated on this dataset**, so the CI gate uses MRR. Noticing your
   own metric has no headroom is the difference between running an eval and
   understanding one. `01_embeddings`
+- **Two MCP servers exporting the same tool name collide silently.** You get two
+  tools called `search`, no error, and tool choice resolved by list order.
+  `08_mcp`
+- **One unreachable MCP server takes down `get_tools()` for every server** --
+  an `ExceptionGroup` out of the shared TaskGroup. Three servers, three single
+  points of failure, unless you load them independently. `08_mcp`
+- **MCP tools have no sync implementation**: `agent.invoke()` raises
+  `NotImplementedError` at the first tool call, after binding and planning
+  succeed. Most LangChain examples use `.invoke()`. `08_mcp`
+- **A sessionless MCP tool call spawns a fresh server process** -- measured,
+  different pid and a reset counter -- so server-side state silently vanishes
+  between calls. `08_mcp`
+- **No similarity threshold separates real questions from gibberish here.**
+  Gibberish tops out at 0.433, real questions bottom out at 0.208. At a 0.25
+  cut-off you refuse 16.7% of genuine questions and still answer 10% of
+  nonsense. `08_mcp/measure_threshold.py`
+- **In-process rate limiting multiplies by worker count** -- four workers serve
+  four times your stated limit. Nearly every FastAPI tutorial has this bug.
+  `09_serving`
 
 ---
 
@@ -262,5 +296,14 @@ The honest limitations of this repo, and what you would do about them:
    retrieval. Adding paraphrased questions would create real headroom.
 3. **The judged tier has never been calibrated on your hardware.** Run
    `calibrate.py` before trusting a single judged number.
-4. **Production traffic beats an imagined dataset.** Lesson 06's real payoff is
-   the loop back to lesson 04: real questions become new golden items.
+4. **Production traffic beats an imagined dataset.** Lessons 06 and 10 both end
+   in the same loop back to lesson 04: real questions become new golden items.
+   An eval dataset that never grows is describing a system that no longer exists.
+5. **The tool-selection set is 8 items.** The keyword baseline scores 75% on it,
+   so there is headroom -- but eight labelled cases rank two routers coarsely.
+   Add yours.
+6. **Lesson 09 is not a security review.** It implements the minimum: auth, a
+   per-key tool allowlist, budgets, timeouts and output guards. A genuinely
+   public endpoint belongs behind a WAF, real identity, and egress control.
+7. **The MCP servers here run over stdio.** That means one subprocess set per
+   replica. At scale, move to HTTP-transport MCP servers.

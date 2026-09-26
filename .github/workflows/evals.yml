@@ -11,7 +11,13 @@
 # The fast tier is not a smoke test. With no model it covers retrieval quality,
 # chunking, dataset integrity, prompt structure, citation validation, agent
 # trajectories, loop detection, PII redaction, index-version drift, budgets,
-# the regression-gate maths and span instrumentation. 329 tests.
+# the regression-gate maths, span instrumentation, chain-link contracts, real
+# MCP protocol round trips, API auth and rate limiting, and burn-rate alerting.
+# 513 tests, about 70 seconds.
+#
+# Roughly 50 of those seconds are lessons 08-10 spawning REAL MCP server
+# subprocesses. That is deliberate: every MCP trap those tests pin is invisible
+# to a mock. The job timeout below allows for it.
 # =============================================================================
 
 name: evals (PR gate)
@@ -36,7 +42,7 @@ jobs:
   fast-tier:
     name: Fast tier (no model)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +69,16 @@ jobs:
           DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
           DEEPEVAL_UPDATE_WARNING_OPT_OUT: "YES"
         run: .venv/bin/python -m pytest -q --junitxml=.artifacts/junit.xml
+
+      - name: MCP tool contract
+        # Prints the tool surface the agent binds, its origin server, any name
+        # collisions, and the tool-selection baseline. A reviewer can see in the
+        # checks output that a server upgrade changed the contract -- which is a
+        # behaviour change with no diff in this repository.
+        run: |
+          mkdir -p .artifacts
+          .venv/bin/python 08_mcp/inspect_servers.py 2>/dev/null \
+            | tee .artifacts/mcp_contract.txt
 
       - name: Retrieval quality report
         # Prints the chunk-size sweep so a reviewer can see the effect of a
@@ -97,6 +113,14 @@ jobs:
             echo
             echo '```'
             cat .artifacts/retrieval_report.txt
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "<details><summary>MCP tool contract and routing baseline</summary>"
+            echo
+            echo '```'
+            cat .artifacts/mcp_contract.txt
             echo '```'
             echo
             echo "</details>"
