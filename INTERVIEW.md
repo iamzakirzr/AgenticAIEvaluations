@@ -432,6 +432,123 @@ actually shipped it:**
 
 ---
 
+### Q16. "How would you test a multi-step prompt chain?"
+
+> Not by scoring the final output. A four-link chain has five failure modes —
+> each link, plus the composition — and all of them present identically as "the
+> answer is wrong", because only the last link's output is visible.
+>
+> Three things. **Trace every link**, so a failure has an address instead of a
+> symptom; that also distinguishes "the link ran and failed" from "the link
+> never ran", which a chain-level assertion cannot, and in a branching chain the
+> second is the more common cause. **Contract-check each boundary** — the `|`s
+> are integration seams, and contract tests at seams are ordinary SDET work. The
+> nastiest one is a non-empty check: an empty link output doesn't raise, it gets
+> formatted into the next prompt as nothing at all and the model answers a
+> question it was never asked. **Measure per-link success**, because that tells
+> you which link to fix.
+>
+> Then the arithmetic, which usually changes the design: four links at 95% each
+> is an 81% chain. Reliability is bounded above by your worst link, so "improve
+> every prompt" is the wrong response. And 99% over five links needs 99.8% per
+> link — if you can't build that link, the fix isn't a better prompt, it's fewer
+> links.
+
+---
+
+### Q17. "You've connected an agent to several MCP servers. What's your test strategy?"
+
+> Start with what changed: my agent's tool surface is now defined by a process I
+> don't control. A server upgrade can rename a tool or reword a description and
+> my agent's behaviour changes with no diff in my repository. I can't unit-test
+> their servers, so I test the seam.
+>
+> Three things. **Snapshot the tool contract** — names, required arguments, and
+> descriptions. Descriptions especially, because the description is the prompt
+> the model routes on, so a reworded one is a behaviour change with a
+> byte-identical schema. **Measure tool-selection accuracy** against labelled
+> cases, which needs no judge: I label which server should serve each question
+> and count. And **test degradation** — with one server down, does the agent
+> still start?
+>
+> Tool selection is the metric I'd lead with, because asking the wrong server
+> produces a fluent, well-cited answer that is *faithful* to the passages it was
+> given. No RAG metric can see it; the error is upstream of everything they
+> measure.
+>
+> The traps I'd mention, all of which I hit: two servers exporting the same tool
+> name collide silently and tool choice falls back to list order; one dead server
+> raises an ExceptionGroup out of the shared TaskGroup and you get no tools from
+> *any* server; MCP tools are async-only, so `.invoke()` raises at the first tool
+> call after binding and planning succeed — which means it passes unit tests and
+> fails in integration.
+
+---
+
+### Q18. "What does it take to expose an agent publicly?"
+
+> First, the framing: it isn't a deployment task. A public agent endpoint is a
+> remote tool execution service, driven by untrusted text, billed to me. A
+> stranger with the URL gets arbitrary execution of every tool I bound, my
+> inference spend with no natural ceiling, and a prompt-injection surface that
+> includes my own retrieved documents — the user's message isn't the only
+> untrusted input.
+>
+> An API key tells me *who*, which is necessary and not close to sufficient. The
+> control people leave out is a **per-key tool allowlist**: a leaked read-only
+> key is a leak, a leaked key that can fetch URLs is an SSRF proxy on my egress
+> IP. I'd enforce it twice — preventively by binding only permitted tools, and
+> detectively by checking afterwards, because if the detective control ever fires
+> the preventive one has a hole and I want my alert to tell me, not my bill.
+>
+> Then: a spend budget separate from the rate limit, because rate isn't cost and
+> one agent request can fan out into a dozen model calls; an input length cap,
+> since the largest input I accept is the largest single bill I can be handed; a
+> hard timeout, because an agent loop with no deadline is unbounded; and output
+> guards for PII and system-prompt leaks.
+>
+> One detail I'd flag: in-process rate limiting multiplies by worker count. Four
+> uvicorn workers serve four times your stated limit, and nearly every FastAPI
+> tutorial has that bug. Limit at the gateway or use shared state.
+>
+> And I'd say plainly that this is the minimum, not a security review. Genuinely
+> public means a WAF, real identity, and egress control in front of it.
+
+---
+
+### Q19. "How do you monitor an LLM system in production?"
+
+> Lead with the limit: **you cannot measure quality live**, because there are no
+> reference answers. Refusal rate, latency, tool mix, citation validity — every
+> one is a proxy. They detect *change*, not correctness, and conflating the two
+> is how you get a green dashboard above a system that's quietly wrong. I'd put
+> that on the dashboard itself rather than let a reader assume otherwise.
+>
+> Inside that limit: **error-budget burn rate on two windows**, not a threshold.
+> "Alert above 1%" fires at 3am for a two-minute blip and stays silent through a
+> week at 0.9% that eats the whole quarterly budget. With a 99% SLO the budget is
+> 1%; burn rate is observed rate over budget. 14.4× on a one-hour window pages,
+> 6× on six hours tickets. Fast catches the outage, slow catches the bleed.
+>
+> **Refusal rate in both directions.** Everyone watches the spike. The collapse
+> is the dangerous one: the system stopped abstaining and started confabulating,
+> and latency improves while the refusal graph goes down, which most dashboards
+> draw green.
+>
+> For a multi-tool agent, **tool-mix drift** — traffic silently moving from the
+> internal server to the web one is a behaviour change with no error and no code
+> change. I'd measure it with total variation distance rather than KL, because KL
+> is undefined when a category disappears entirely and that's exactly the
+> interesting case.
+>
+> And the loop back: anomalous traffic — blocked, errored, refused, unusually
+> long — becomes candidates for the golden set. Humans label them. Auto-filling
+> the reference from the system's own output builds a dataset that certifies
+> current behaviour as correct and hides every existing bug forever.
+
+
+---
+
 # The 60-second project pitch
 
 Practise until it's smooth. Concrete numbers and one honest limitation.
@@ -440,12 +557,16 @@ Practise until it's smooth. Concrete numbers and one honest limitation.
 > LangChain, LangGraph, DeepEval, RAGAS and LangWatch, running against local
 > open-source models through Ollama.
 >
-> The design decision I'd highlight is the two-tier test strategy. Around 340
-> tests run in fifteen seconds with no model, no GPU and no API key — retrieval
-> quality, dataset integrity, prompt structure, agent trajectories, PII
-> redaction, the regression-gate maths. Judged metrics are behind a marker and
-> run nightly, never on a PR, because gating on a noisy judge teaches everyone
-> to ignore CI.
+> It goes from an embeddings walkthrough through to an agent on a public
+> endpoint with a live dashboard, including MCP, so the same system is built,
+> exposed and then watched.
+>
+> The design decision I'd highlight is the two-tier test strategy. Over 500
+> tests run with no model, no GPU and no API key — retrieval quality, dataset
+> integrity, prompt structure, agent trajectories, PII redaction, real MCP
+> protocol round trips, API auth, the regression-gate maths. Judged metrics are
+> behind a marker and run nightly, never on a PR, because gating on a noisy
+> judge teaches everyone to ignore CI.
 >
 > Two findings I'm most pleased with. First, recall on my dataset is *saturated*
 > — it moves by 0.012 across a sixteen-fold change in chunk size — so gating on
@@ -455,6 +576,13 @@ Practise until it's smooth. Concrete numbers and one honest limitation.
 > the artifacts directory and the workflow published it. I fixed the call sites,
 > added an autouse fixture that fails any test writing to that directory, and
 > made CI produce the report rather than find it.
+>
+> A third, if there's time: I wanted a similarity threshold so the system would
+> refuse when retrieval was weak. I measured it first — 42 real questions against
+> 200 random strings — and the distributions overlap: gibberish tops out at
+> 0.433, real questions bottom out at 0.208. No threshold separates them. So I
+> shipped the score as a hint rather than a gate, and pinned the overlap in a
+> test so nobody "fixes" it later.
 >
 > The honest limitation is that the corpus is only eight documents and the
 > questions reuse its vocabulary, which is exactly why recall saturates. Real

@@ -143,7 +143,7 @@ failures without a model.
 
 ---
 
-## 3. The five tools, in one line each
+## 3. The tools, in one line each
 
 | Tool | What it is | You'll use it to |
 |---|---|---|
@@ -152,6 +152,8 @@ failures without a model.
 | **DeepEval** | Eval library, pytest-shaped | Score outputs; it feels like a test framework |
 | **RAGAS** | Eval library, dataset-shaped | Score the same outputs a second way |
 | **LangWatch** | Hosted tracing + online eval | See what production is actually doing |
+| **MCP** | A protocol for exposing tools to any agent | Give one agent tools from three servers you did not write |
+| **FastAPI** | The web layer | Put the agent on a public endpoint, with guards |
 
 **Why two eval libraries?** Because when they disagree sharply, at least one
 judge is unreliable — and that's something neither can tell you alone. It's the
@@ -159,7 +161,7 @@ same reason you'd cross-check a flaky assertion against a different method.
 
 ---
 
-## 4. The 4-week plan
+## 4. The 5-week plan
 
 Each block is ~2–4 hours. Do the reading, run the code, then break something
 on purpose and watch the number move — that last part is where the learning is.
@@ -202,7 +204,23 @@ on purpose and watch the number move — that last part is where the learning is
 | 2 | `06_langwatch/README.md`; run its tests | "In production there's no reference answer, so these metrics survive and those don't" |
 | 3 | `make gate-fast`, then `make baseline`, then `make gate` | "I gate on a noise band, not a fixed threshold" |
 | 4 | Read the four workflows in `.github/workflows/` | "Judged metrics never gate a PR, and here's why" |
-| 5 | `INTERVIEW.md` — answer out loud, then check | Ready to interview |
+| 5 | Break a metric on purpose: move a baseline, then run `make gate` | "Moving a baseline is how a regression disappears" |
+
+### Week 5 — Chains, MCP, and going live
+
+| Day | Do this | You'll be able to say |
+|---|---|---|
+| 1 | `07_prompt_chaining/README.md`; run its tests | "Four 95% links are an 81% chain, so I trace and contract-check every link" |
+| 2 | `make mcp-tools`, then `08_mcp/README.md` | "My agent's tool surface lives in someone else's repo, so I snapshot the contract" |
+| 3 | `make threshold`, then `pytest 08_mcp -v` | "I measured whether a relevance threshold works before shipping one" |
+| 4 | `make serve-agent`; call `/v1/ask`, then open `/live` | "A public agent endpoint is remote tool execution billed to me" |
+| 5 | `10_live_monitoring/README.md`; read the burn-rate tests | "Live monitoring detects change, not quality — quality is offline" |
+
+### Then
+
+| Do this | You'll be able to say |
+|---|---|
+| `INTERVIEW.md` — answer all 19 out loud, then check | Ready to interview |
 
 ---
 
@@ -212,7 +230,8 @@ on purpose and watch the number move — that last part is where the learning is
 - **Every module has a header explaining *why*,** not just what. Read those first.
 - **Break things deliberately.** Change a number, re-run, explain the movement.
   If nothing moves, that metric was never going to catch a regression.
-- **`make test` is your safety net.** 337 tests, ~15 seconds, no model needed.
+- **`make test` is your safety net.** 513 tests, no model needed. Use
+  `make test-quick` (430 of them, ~18s) while you iterate.
 
 ---
 

@@ -35,8 +35,13 @@ hello:  ## START HERE: your first evaluation (60 lines, 2s, no model needed)
 # --- Tests -------------------------------------------------------------------
 
 .PHONY: test
-test:  ## FAST tier: no model, no network, ~1s. This is the CI gate.
+test:  ## FAST tier: 513 tests, no model, no network, ~70s. This is the CI gate.
 	$(PY) -m pytest -q
+
+.PHONY: test-quick
+test-quick:  ## 430 of those in ~18s -- skips the lessons that spawn real MCP servers
+	$(PY) -m pytest -q core scripts 00_start_here 01_embeddings 02_langchain \
+		03_langgraph 04_deepeval 05_ragas 06_langwatch 07_prompt_chaining
 
 .PHONY: test-ollama
 test-ollama:  ## Real embeddings and real generation (needs Ollama)
@@ -59,6 +64,21 @@ lesson-embeddings:  ## Run the embeddings walkthrough (prints, does not assert)
 .PHONY: chat
 chat:  ## Serve the RAG chatbot at http://localhost:8000
 	.venv/bin/uvicorn 02_langchain.server:app --reload --port 8000
+
+.PHONY: serve-agent
+serve-agent:  ## Serve the PUBLIC agent gateway + live dashboard on :8001
+	@echo "  API   http://localhost:8001/docs"
+	@echo "  LIVE  http://localhost:8001/live"
+	@echo "  key   x-api-key: sk_eval_demo_readonly"
+	$(PY) 09_serving/public_api.py
+
+.PHONY: mcp-tools
+mcp-tools:  ## List every tool the three MCP servers expose, and their origin
+	$(PY) 08_mcp/inspect_servers.py
+
+.PHONY: threshold
+threshold:  ## Does a similarity threshold separate real questions from noise?
+	$(PY) 08_mcp/measure_threshold.py
 
 # --- Regression gating -------------------------------------------------------
 

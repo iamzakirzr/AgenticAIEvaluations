@@ -28,6 +28,19 @@ dependencies = [
     # --- LangGraph: stateful agent graphs (lesson 03) ---------------------
     "langgraph==1.2.11",
 
+    # --- MCP: one agent, several tool servers (lesson 08) -----------------
+    # `mcp` is the reference Python SDK -- it provides BOTH the client and the
+    # FastMCP server used by 08_mcp/servers/. langchain-mcp-adapters is the
+    # bridge that turns an MCP tool into a LangChain BaseTool.
+    #
+    # Pinned for the same reason as everything else here: the adapter's
+    # behaviour around tool-name prefixing, session reuse and result shape is
+    # precisely what lesson 08 teaches, and all three have moved between
+    # releases. If you bump these, run `pytest 08_mcp` first -- those tests are
+    # written to fail loudly when the seam changes.
+    "mcp==1.30.0",
+    "langchain-mcp-adapters==0.3.2",
+
     # --- Evaluation libraries (lessons 04 and 05) ------------------------
     "deepeval==4.2.1",
     "ragas==0.4.3",
@@ -46,6 +59,9 @@ dependencies = [
     # one in when you actually need it.
     "fastapi",
     "uvicorn",
+    # Lesson 09 serves the agent publicly and lesson 10 watches it live. Both
+    # are tested through fastapi.testclient, which needs httpx (already below).
+    "sse-starlette",
 
     # --- Plumbing ---------------------------------------------------------
     "numpy",
@@ -90,7 +106,11 @@ markers = [
     "saas: requires a third-party SaaS account and API key",
 ]
 addopts = "-m 'not judge and not ollama and not saas' --strict-markers -q"
-testpaths = ["core", "scripts", "00_start_here", "01_embeddings", "02_langchain", "03_langgraph", "04_deepeval", "05_ragas", "06_langwatch"]
+testpaths = [
+    "core", "scripts", "00_start_here",
+    "01_embeddings", "02_langchain", "03_langgraph", "04_deepeval", "05_ragas",
+    "06_langwatch", "07_prompt_chaining", "08_mcp", "09_serving", "10_live_monitoring",
+]
 asyncio_mode = "auto"
 
 [tool.ruff]
@@ -111,4 +131,8 @@ ignore = [
     # Pydantic model fields legitimately have mutable defaults; pydantic
     # handles the copying that makes this safe.
     "RUF012",
+    # `def handler(key: ApiKey = Depends(authorised))` is how FastAPI dependency
+    # injection is spelled. The rule is aimed at accidental mutable defaults;
+    # here the call in the default IS the mechanism. 09_serving/public_api.py.
+    "B008",
 ]
