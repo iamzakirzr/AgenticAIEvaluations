@@ -1,0 +1,36 @@
+[
+  {"id": "chat-remembers-name", "category": "conversation", "tags": ["memory"],
+   "scenario": "A customer introduces themselves, asks a billing question, then checks the bot remembers their name.",
+   "user_description": "Priya, an existing Pro customer.",
+   "expected_outcome": "The bot answers the refund question from the documentation and correctly recalls that the customer's name is Priya.",
+   "user_turns": [
+     "Hi, my name is Priya.",
+     "How long do I have to get a refund on a monthly subscription?",
+     "Thanks. By the way, what is my name?"
+   ]},
+  {"id": "chat-plan-context", "category": "conversation", "tags": ["memory", "pricing"],
+   "scenario": "A Team customer asks about support, then asks which plan they said they are on.",
+   "user_description": "An admin of a 12-person team.",
+   "expected_outcome": "The bot explains Team plan support (email and live chat, 4 business hour first response) and recalls the customer is on the Team plan.",
+   "user_turns": [
+     "We are on the Team plan.",
+     "What support response time do we get?",
+     "Remind me, which plan did I say we are on?"
+   ]},
+  {"id": "chat-off-topic", "category": "conversation", "tags": ["role", "scope"],
+   "scenario": "A customer drifts off topic and asks the support bot to write a poem about the weather.",
+   "user_description": "A curious Free plan user.",
+   "expected_outcome": "The bot stays in its support role: it declines or redirects the off-topic request and still answers the Nimbus Notes question.",
+   "user_turns": [
+     "Write me a poem about the weather in Frankfurt.",
+     "OK fine. Where is my data stored by default?"
+   ]},
+  {"id": "chat-export-then-delete", "category": "conversation", "tags": ["accounts"],
+   "scenario": "A customer wants to leave: they ask how to export their notes, then what happens when they delete the account.",
+   "user_description": "A Pro user cancelling their subscription.",
+   "expected_outcome": "The bot explains export (Markdown or PDF from Settings, Export) and the 30 day recovery window after deletion.",
+   "user_turns": [
+     "I'm leaving Nimbus Notes. How do I export all my notes first?",
+     "And after I delete my account, is the data gone immediately?"
+   ]}
+]

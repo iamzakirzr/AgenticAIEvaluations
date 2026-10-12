@@ -1,96 +1,74 @@
-# =============================================================================
-# Every command you need, in one place. Run `make` to see them.
-# =============================================================================
-
+# Run `make` to list targets.
 .DEFAULT_GOAL := help
 PY := .venv/bin/python
 
 .PHONY: help
-help:  ## Show this help
+help:  ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
-
-# --- Setup -------------------------------------------------------------------
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup:  ## Create .venv and install everything (needs `uv`)
+setup:  ## Create .venv and install (needs uv)
 	uv venv --python 3.11 .venv
 	uv pip install --python $(PY) -e ".[dev]"
-	@echo ""
-	@echo "Next: start Ollama and pull the models ->  make models"
 
 .PHONY: models
-models:  ## Pull the Ollama models the judged tier needs
+models:  ## Pull the default Ollama models
 	ollama pull llama3.1:8b
-	ollama pull nomic-embed-text
-	@echo "Optional second judge for the calibration lesson:"
-	@echo "  ollama pull qwen2.5:7b"
 
-# --- Learning ----------------------------------------------------------------
-
-.PHONY: hello
-hello:  ## START HERE: your first evaluation (60 lines, 2s, no model needed)
-	$(PY) 00_start_here/hello_eval.py
-
-# --- Tests -------------------------------------------------------------------
+# --- Tiers -------------------------------------------------------------------
 
 .PHONY: test
-test:  ## FAST tier: no model, no network, ~1s. This is the CI gate.
-	$(PY) -m pytest -q
+test:  ## Unit tier: no model, no network, ~1s (the PR gate)
+	$(PY) -m pytest
 
-.PHONY: test-ollama
-test-ollama:  ## Real embeddings and real generation (needs Ollama)
-	$(PY) -m pytest -m ollama -v
+.PHONY: eval
+eval:  ## llm tier: every judged suite (needs a judge)
+	$(PY) -m pytest -m llm -v -rs
 
-.PHONY: test-judge
-test-judge:  ## The expensive judged metrics (needs Ollama, slow, non-deterministic)
-	$(PY) -m pytest -m judge -v
+.PHONY: eval-rag
+eval-rag:  ## llm tier: RAG quality only
+	$(PY) -m pytest -m llm tests/evals/rag -v -rs
 
-.PHONY: test-all
-test-all:  ## Everything except the SaaS tier
-	$(PY) -m pytest -m "not saas" -v
+.PHONY: eval-agent
+eval-agent:  ## llm tier: agent evals only
+	$(PY) -m pytest -m llm tests/evals/agent -v -rs
 
-# --- Lessons -----------------------------------------------------------------
+.PHONY: eval-chat
+eval-chat:  ## llm tier: multi-turn conversations only
+	$(PY) -m pytest -m llm tests/evals/chat -v -rs
 
-.PHONY: lesson-embeddings
-lesson-embeddings:  ## Run the embeddings walkthrough (prints, does not assert)
-	$(PY) 01_embeddings/walkthrough.py
+.PHONY: eval-safety
+eval-safety:  ## llm tier: curated safety probes only
+	$(PY) -m pytest -m llm tests/evals/safety -v -rs
 
-.PHONY: chat
-chat:  ## Serve the RAG chatbot at http://localhost:8000
-	.venv/bin/uvicorn 02_langchain.server:app --reload --port 8000
+.PHONY: redteam
+redteam:  ## redteam tier: DeepTeam attacks (slowest)
+	$(PY) -m pytest -m redteam -v -rs -s
 
-# --- Regression gating -------------------------------------------------------
+# --- Reporting ---------------------------------------------------------------
 
 .PHONY: gate
-gate:  ## Compare current scores against the recorded baseline (CI's gate)
-	$(PY) scripts/run_regression_gate.py
-
-.PHONY: gate-fast
-gate-fast:  ## Same gate, retrieval metrics only -- no model needed
-	$(PY) scripts/run_regression_gate.py --deterministic
+gate:  ## Aggregate the last run and compare against baselines/baseline.json
+	$(PY) -m evalkit.reporting.gate
 
 .PHONY: baseline
-baseline:  ## Record the CURRENT scores as the new reference. Review the diff!
-	@echo "Moving a baseline is how a regression disappears. Check the diff."
-	$(PY) scripts/run_regression_gate.py --record --repetitions 5
+baseline:  ## Record the last run as the baseline. Review the diff before committing!
+	$(PY) -m evalkit.reporting.gate --record
 
-.PHONY: calibrate
-calibrate:  ## Measure whether your judge agrees with human labels (Cohen's kappa)
-	$(PY) 04_deepeval/calibrate.py
-
-# --- Experiments -------------------------------------------------------------
-
-.PHONY: experiment-chunking
-experiment-chunking:  ## Show how chunk size moves retrieval metrics
-	$(PY) 01_embeddings/experiment_chunk_size.py
+# --- Hygiene -----------------------------------------------------------------
 
 .PHONY: lint
-lint:  ## Ruff check + format check
+lint:  ## Ruff lint + format check
 	.venv/bin/ruff check .
 	.venv/bin/ruff format --check .
 
+.PHONY: format
+format:  ## Apply ruff formatting and safe fixes
+	.venv/bin/ruff check --fix .
+	.venv/bin/ruff format .
+
 .PHONY: clean
-clean:  ## Remove caches and generated artifacts
-	rm -rf .artifacts .chroma .pytest_cache .ruff_cache .deepeval
+clean:  ## Remove caches and run outputs
+	rm -rf reports .deepeval .pytest_cache .ruff_cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

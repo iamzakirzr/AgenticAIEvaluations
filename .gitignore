@@ -1,26 +1,11 @@
-# --- Python ---------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
 .venv/
-venv/
+__pycache__/
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
-uv.lock
-
-# --- This project ---------------------------------------------------------
-# Vector indexes, evaluation reports, cached judge responses. All regenerable.
-.artifacts/
-.chroma/
+.env
+# DeepEval writes run caches and results here.
 .deepeval/
 .deepeval-cache.json
-.deepeval_telemetry.txt
-temp_test_run_data.json
-
-# Secrets. NEVER commit a real one -- .env.example is the template.
-.env
-
-# --- Editors --------------------------------------------------------------
-.vscode/
-.idea/
-.DS_Store
+# Per-run outputs. Baselines live in baselines/ and ARE committed.
+reports/

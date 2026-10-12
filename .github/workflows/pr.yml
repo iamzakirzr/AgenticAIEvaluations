@@ -1,0 +1,43 @@
+# PR gate: lint + the unit tier. No model, no secrets, about a minute.
+#
+# Judged metrics never gate a pull request. They are slow and vary between
+# identical runs; gate on them and the build goes red on sampling noise until
+# someone adds `continue-on-error` and nobody reads CI again.
+name: pr
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Lint
+        run: |
+          .venv/bin/ruff check .
+          .venv/bin/ruff format --check .
+      - name: Unit tier
+        run: .venv/bin/python -m pytest -rs
+      - name: Live tiers still collect
+        # Catches a broken import or golden file in the llm/redteam tests
+        # without running them.
+        run: .venv/bin/python -m pytest -m "llm or redteam" --collect-only -q
