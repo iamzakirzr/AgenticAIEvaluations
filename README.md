@@ -1,266 +1,197 @@
-# Agentic AI Evaluations
+# evalkit: LLM and AI agent evaluation with DeepEval
 
-A hands-on curriculum for **building and evaluating** RAG pipelines, chatbots and
-agents — with LangChain, LangGraph, LangWatch, DeepEval and RAGAS, running
-entirely against **local open-source models via Ollama**.
+A test automation framework for LLM applications and AI agents, built on
+[DeepEval](https://github.com/confident-ai/deepeval) (4.2.8) and
+[DeepTeam](https://github.com/confident-ai/deepteam) (1.0.9). It is organised the
+way a QA team organises any other test suite: tiers, fixtures, data-driven cases,
+config-driven thresholds, reports and a regression gate.
 
-Seven lessons. Each builds something, then measures it. **411 tests run in ~16
-seconds with no model, no GPU and no API key**, so you can explore and break
-things freely before ever loading a model.
-
-```bash
-make setup && make test        # 411 tests, ~16s, nothing to install beyond Python
-make lesson-embeddings         # the step-by-step walkthrough
-make chat                      # the chatbot at http://localhost:8000
-```
-
----
-
-## The uncomfortable thing this repo is built around
-
-**Installing an eval library and printing a number is not evaluation.** Anyone
-can `pip install deepeval` and copy the quickstart. Three things separate that
-from work worth paying for, and each has a lesson here:
-
-1. **A dataset designed to make your system fail** — unanswerable questions,
-   false premises, multi-hop synthesis. A golden set of happy-path questions
-   reports great scores and catches nothing.
-2. **Knowing which metric can actually move.** Recall is saturated on this
-   corpus (spread 0.012 across a 16× chunk-size sweep). Gating CI on a saturated
-   metric is theatre, so the gate uses MRR instead.
-3. **Calibrating the judge.** A metric from an uncalibrated judge is a number
-   that looks rigorous and may measure nothing. Almost nobody checks. Lesson 04
-   does.
-
----
-
-## New to this? Start at zero
-
-**[00_start_here](00_start_here/)** is the on-ramp for QA and SDET engineers:
-a translation table from concepts you already own (test oracle, boundary
-values, flaky tests, coverage, CI gates) to their AI-evaluation equivalents,
-how AI/ML actually works with no maths, a full glossary, and a 4-week plan.
-
-```bash
-make hello     # your first evaluation: 60 lines, 2 seconds, no model needed
-```
-
-Then **[INTERVIEW.md](INTERVIEW.md)** — 15 scenario questions with
-weak-vs-strong answer contrasts, a 60-second project pitch, and questions to
-ask the interviewer.
-
----
-
-## The learning path
-
-| # | Lesson | You build | You learn |
-|---|---|---|---|
-| 01 | **[embeddings](01_embeddings/)** | A retriever in ~80 lines of numpy | Tokenization → hashing → IDF → cosine → ranking, and where lexical search breaks |
-| 02 | **[langchain](02_langchain/)** | The RAG pipeline + a chatbot | LangChain 1.4, prompt design as an eval concern, citation checking |
-| 03 | **[langgraph](03_langgraph/)** | A tool-using agent | Why an agent is a while-loop, and why trajectories need their own metrics |
-| 04 | **[deepeval](04_deepeval/)** | An Ollama judge + calibration | The metric catalogue, and Cohen's kappa |
-| 05 | **[ragas](05_ragas/)** | The same pipeline, scored again | A second opinion, and where two libraries disagree |
-| 06 | **[langwatch](06_langwatch/)** | Tracing + online evaluation | Evaluating traffic you cannot label |
-
-Each lesson also has **advanced topics** beyond the core walkthrough:
-
-| Lesson | Advanced module | Covers |
+| Area | What is evaluated | Metrics |
 |---|---|---|
-| 02 | `advanced_retrieval.py` | BM25, RRF, hybrid search, MMR, reranking, query rewriting, HyDE, multi-query, conversational retrieval |
-| 03 | `advanced_graph.py` | parallel fan-out/fan-in, reducers, subgraphs, streaming |
-| 04 | `advanced_deepeval.py` | red teaming, synthetic data, multi-turn metrics, `assert_test` |
-| 05 | `advanced_ragas.py` | test-set generation and the review queue |
+| **RAG / LLM quality** | Grounding, retrieval quality, correctness, refusal on unanswerable and false-premise questions | Faithfulness, Answer Relevancy, Contextual Precision / Recall / Relevancy, Hallucination, G-Eval *Answer Correctness* and *Refusal Quality*, custom *Citation* and *Refusal* |
+| **Agents** | Tool selection, arguments, task completion, trajectory | Tool Correctness, Argument Correctness, Task Completion, Step Efficiency (trace-based), custom *Step Budget* and *Redundant Tool Calls* |
+| **Multi-turn chat** | Memory, staying in role, finishing the job | Knowledge Retention, Role Adherence, Conversation Completeness, Turn Relevancy, Conversational G-Eval *Support Resolution* |
+| **Safety** | Curated probes plus generated attacks | Bias, Toxicity, PII Leakage, custom *Forbidden Content*; DeepTeam red teaming (prompt injection, roleplay, encoding and jailbreak attacks) |
 
-Then **[PRODUCTION.md](PRODUCTION.md)** — every lesson also ships a
-`production_*.py` scenario covering the failures that actually take eval systems
-down: embedding/index version drift, PII leaving your process, judge-failure
-budgets, NaN-poisoned means, variance-aware regression gates, human approval
-gates that fail closed, and four CI workflows.
-
-**Read them in order.** Each lesson's `README.md` is the written explanation; the
-code is heavily commented and meant to be read alongside it.
-
----
-
-## Setup
+## Quick start
 
 ```bash
-make setup          # creates .venv, installs everything (needs `uv`)
-make test           # 411 fast tests -- no model required
+make setup          # .venv + install (needs uv)
+make test           # unit tier: 130 tests, ~1s, no model, no API key
+
+# Judged tiers: local by default
+ollama pull llama3.1:8b
+cp .env.example .env
+make eval           # every judged suite
+make gate           # aggregate scores, compare against the baseline
 ```
 
-For the judged tiers you need [Ollama](https://ollama.com):
+To use a hosted judge, set `JUDGE_PROVIDER=openai|anthropic|azure` and the
+matching key in `.env`. No code changes.
 
-```bash
-ollama serve
-make models         # pulls llama3.1:8b and nomic-embed-text
-make test-judge     # the expensive judged metrics
-```
+## Three tiers
 
-**Any OpenAI-compatible server works** — vLLM, LM Studio, llama.cpp, TGI, or a
-hosted API. Point `OLLAMA_BASE_URL` at it. See `.env.example` for every knob.
-
----
-
-## The two-tier test strategy
-
-This is the design decision worth stealing:
-
-| Tier | Marker | Needs | Speed | Runs |
+| Tier | Marker | Needs | Runs | Purpose |
 |---|---|---|---|---|
-| **Fast** | *(none)* | nothing | ~16s | every push |
-| **Ollama** | `-m ollama` | a local model | minutes | on demand |
-| **Judged** | `-m judge` | a local model as judge | slow, noisy | nightly / manual |
-| **SaaS** | `-m saas` | a LangWatch account | — | never in CI |
+| Unit | *(none)* | nothing | every PR (`pr.yml`) | Tests the framework itself: loaders, builders, deterministic metrics, the gate, and the bundled apps with scripted models end-to-end |
+| LLM | `llm` | judge + SUT model | nightly (`nightly-evals.yml`) | DeepEval judged metrics on every golden |
+| Red team | `redteam` | strong judge | weekly (`redteam.yml`) | DeepTeam generated attacks against the chatbot |
 
-An eval suite that takes 20 minutes and fails randomly gets switched off within
-a fortnight. One that runs in two seconds and never lies gets trusted — and the
-slow judged tier stays credible because it isn't asked to do a job it's bad at.
+`pytest` runs only the unit tier. `pytest -m llm` and `pytest -m redteam` select
+the others. If the judge or the system under test (SUT) is unreachable, those tests are **skipped
+with the reason** (`Ollama model 'llama3.1:8b' not pulled (run: ollama pull
+llama3.1:8b)`) instead of erroring once per case.
 
-**What the fast tier actually covers**, with no model: retrieval quality
-(recall@k, MRR, nDCG), chunking behaviour, golden-dataset integrity, prompt
-structure, citation validation, agent trajectories, loop detection, judge
-calibration maths, span instrumentation — and every production scenario:
-retry/circuit-breaker/budget behaviour, index version drift, PII redaction,
-approval gates, NaN handling and the regression gate itself. That is most of
-what matters.
+Judged metrics never gate a pull request. They are slow and vary between
+identical runs, so a PR gate built on them goes red on noise.
 
----
+## Architecture
 
-## What's in the repo
-
-```
-00_start_here/       the on-ramp: QA-to-eval bridge, ML primer, glossary, hello_eval
-core/                shared spine -- config, providers, traces, dataset, metrics
-  resilience.py      retry, timeout, circuit breaker, budget, bounded map
-  baseline.py        variance-aware regression gating
-  corpus/            8-document knowledge base (the thing being retrieved)
-  golden.jsonl       48 labelled questions across 4 categories
-01_embeddings/ … 06_langwatch/     the lessons, each with a production_*.py
-scripts/             run_regression_gate.py -- the CI entry point
-.github/workflows/   4 workflows: PR gate, nightly judged, drift canary, baseline
+```mermaid
+flowchart LR
+    G[data/goldens/*.json] --> L[datasets.loader<br/>Golden / ConversationalGolden]
+    L --> T[pytest test<br/>parametrised per golden]
+    T --> S[SUT adapter<br/>RAGApp / AgentApp / ChatApp]
+    S --> B[builders<br/>LLMTestCase / ConversationalTestCase]
+    B --> R[runner.run_metrics]
+    M[metrics.suites<br/>+ config/thresholds.yaml] --> R
+    J[judges.factory<br/>Ollama / OpenAI / Anthropic / Azure] --> M
+    R --> O[reports/outcomes-*.json]
+    O --> GT[reporting.gate<br/>vs baselines/baseline.json]
 ```
 
-### The golden dataset is the most important file
+```
+src/evalkit/
+  config.py             Settings from env/.env; thresholds from YAML
+  judges/               judge factory + health checks; OfflineJudge for the unit tier
+  sut/                  Protocols + three bundled reference apps
+    rag_app/            TF-IDF retriever over a fictional product's docs, cited answers
+    agent_app/          tool-calling loop (calculator, search_docs, get_order), records a trace
+    chat_app/           multi-turn support bot with persona and history
+  datasets/loader.py    strict JSON -> Golden validation
+  builders.py           SUT response -> DeepEval test case
+  metrics/              deterministic custom metrics, G-Eval criteria, suites per area
+  runner.py             run metrics, keep every score/reason/error, assert
+  redteam/runner.py     DeepTeam from config/redteam.yaml
+  reporting/            outcome files, aggregation, regression gate
+config/                 thresholds.yaml, redteam.yaml
+data/goldens/           rag, agent, conversations, safety
+tests/unit/             the framework's own tests
+tests/evals/            llm and redteam tiers
+```
 
-48 items, four categories, three of which exist to make the system **fail**:
+### Design decisions worth knowing
 
-| Category | n | Purpose |
-|---|---|---|
-| `single_hop` | 26 | baseline competence |
-| `multi_hop` | 10 | needs synthesis across documents |
-| `unanswerable` | 6 | **correct behaviour is refusal** |
-| `adversarial` | 6 | false premises — catches sycophancy |
+- **Fictional corpus.** The bundled apps answer questions about *Nimbus Notes*,
+  a product that does not exist. A model cannot answer from memory, so the
+  faithfulness and refusal scores measure grounding, not trivia recall.
+- **Adversarial goldens.** The RAG set includes unanswerable and false-premise
+  questions, and a unit test enforces that. Happy-path-only goldens score well
+  and catch nothing.
+- **The metric set depends on the case category.** ContextualRecall on an
+  unanswerable question measures nothing, so those cases are scored on refusal
+  quality instead (`metrics/suites.py`).
+- **Deterministic first.** Anything checkable without a judge, such as citations
+  pointing at retrieved sources, refusing exactly when it should, tool names,
+  step budgets, repeated tool calls and leaked PII or secrets, is a custom
+  `BaseMetric` that is exact and never flaky.
+- **Errors fail.** A metric that raises (for example, a judge returning invalid JSON)
+  is recorded as a failure with the error, never silently skipped.
+- **Scores are kept.** `runner.run_metrics` records every score and reason, not
+  just pass/fail, so the gate can detect a system that got worse while every
+  case still passes.
 
-`un-02` asks "What is the capital of France?" The model certainly knows. The
-corpus doesn't contain it. Answering proves the system ignores its own grounding
-instruction — and a dataset without such items would score a hallucinating
-system perfectly.
+## Testing your own application
 
-Every item records `reference_doc_ids`, which is what makes recall@k and MRR
-computable **with no LLM at all**. Most tutorial datasets omit it. It is the
-cheapest thing you can add that makes a dataset genuinely useful.
+Tests only talk to the Protocols in `src/evalkit/sut/base.py`. Write an adapter
+and return it from the fixture in `tests/conftest.py`:
 
----
+```python
+# tests/conftest.py
+@pytest.fixture(scope="session")
+def rag_app(settings):
+    return MyServiceRAG(base_url="https://staging.example.com")
 
-## Design decisions, and why
 
-**Shared spine, separate adapters.** `core/` holds only what two or more lessons
-use. DeepEval and RAGAS get *separate* adapters rather than one unified metric
-interface, because they genuinely disagree about what a test case is:
+class MyServiceRAG:
+    def query(self, question: str) -> RAGResponse:
+        r = httpx.post(f"{self.base_url}/ask", json={"q": question}).json()
+        return RAGResponse(answer=r["answer"], contexts=r["chunks"], sources=r["sources"])
+```
 
-| Concept | DeepEval | RAGAS |
-|---|---|---|
-| the question | `input` | `user_input` |
-| what the system said | `actual_output` | `response` |
-| the reference answer | `expected_output` | `reference` |
-| what the retriever found | `retrieval_context` | `retrieved_contexts` |
+Then replace the goldens in `data/goldens/` with cases about your domain.
+For agents, return `AgentResponse(tool_calls=[...])`. Including a `trace` dict
+enables StepEfficiency. Without one, drop that metric from `agent_judged`.
 
-A unified interface would flatten these and lose information from both. **Adapt
-at the edges; don't unify in the middle.**
+## Adding test cases
 
-**Every pipeline returns a trace, never a string.** Faithfulness, context
-precision and context recall are all uncomputable from an answer alone. A
-pipeline that discards its retrieved chunks cannot be evaluated.
+Edit JSON, not Python. Each RAG or agent golden has an `id`, a `category` (see
+`datasets/loader.py`), an `input`, and an `expected_output`. Optionally add
+`context` (ground truth, which enables Hallucination), `expected_tools`, and `tags`.
+Malformed files fail collection with the file, index and problem.
 
-**Design for deterministic observability.** Numbered passages make citation
-hallucination an integer comparison. An exact refusal string makes refusal a
-regex. `refuse` as an agent *tool* makes refusal a boolean. Each turns a judged
-question into a free one.
+```json
+{"id": "rag-sms-2fa", "category": "answerable", "tags": ["security"],
+ "input": "Can I use SMS codes for two-factor authentication?",
+ "expected_output": "No. ... SMS codes are not supported.",
+ "context": ["Two-factor authentication supports ... SMS codes are not supported."]}
+```
 
----
+## Adding a metric
 
-## Real findings from building this
+- **Deterministic:** subclass `DeterministicMetric`, implement
+  `score_case(test_case) -> (score, reason)`, and add a unit test.
+- **Judged criterion:** add a `GEval` with explicit `evaluation_steps` to
+  `metrics/geval.py`. Steps make scores more repeatable than a one-line `criteria`.
+- Add the metric to a suite in `metrics/suites.py` and its threshold to
+  `config/thresholds.yaml`.
 
-Everything below was discovered by writing the code, verified against installed
-versions, and pinned as a test:
+## Reports and the regression gate
 
-- **`ragas 0.4.3` will not import** on a modern LangChain stack — a module-level
-  import of a class `langchain-community 0.4.x` removed, declared as an unpinned
-  dependency. `core/compat.py`
-- **Every RAGAS tutorial online uses a deprecated API.** `ragas.metrics` now
-  warns; `ragas.metrics.collections` is current. `05_ragas`
-- **`ToolCorrectnessMetric` demands an OpenAI key it never uses** — it's a
-  deterministic comparison whose `__init__` builds a default OpenAI model.
-  `04_deepeval`
-- **`PatternMatchMetric` uses `fullmatch`, not `search`**, despite the name. A
-  bare phrase scores 0.0 on text that plainly contains it. `04_deepeval`
-- **OpenTelemetry silently drops dict-valued span attributes** — no error, the
-  field simply isn't there when you go looking during an incident. `06_langwatch`
-- **`add_messages` de-duplicates by message id**, so replaying an identical
-  message object ends an agent loop early with no error. `03_langgraph`
-- **Recall is saturated on this dataset**, so the CI gate uses MRR. Noticing your
-  own metric has no headroom is the difference between running an eval and
-  understanding one. `01_embeddings`
-
----
-
-## The measurement that matters most
+Each llm-tier run writes `reports/outcomes-*.json`, one file per xdist worker.
 
 ```bash
-python 04_deepeval/calibrate.py --demo
+make gate       # writes reports/summary.{json,md}; exit 1 on regression vs baselines/baseline.json
+make baseline   # record the last run as the baseline. Review the diff before committing it.
 ```
 
-```
-lazy judge (always says pass)        raw agreement: 90%   kappa: 0.000
-useful judge (caught the failure)    raw agreement: 90%   kappa: 0.615
-```
+A metric regresses when its mean drops by more than the tolerance (default 0.05)
+or its pass rate drops. For Bias, Toxicity and Hallucination, a rise counts as
+a regression. Metrics missing from a filtered run are reported but not failed.
 
-Both judges are wrong exactly once. One missed the only real failure; the other
-caught it and raised one false alarm. **Only kappa distinguishes them.**
+There is no committed baseline yet. Record one after a few stable runs on
+your chosen judge. Until then the nightly gate only reports.
 
-"My judge agrees with me 90% of the time" is not evidence of anything.
+## CI
 
-| kappa | verdict |
-|---|---|
-| > 0.6 | may gate CI |
-| 0.4–0.6 | track the trend, don't fail builds |
-| < 0.4 | the metric is noise |
+| Workflow | Trigger | Runs |
+|---|---|---|
+| `pr.yml` | PR, push to main | ruff, unit tier, collect-only check of the live tiers |
+| `nightly-evals.yml` | 02:17 UTC daily, manual | llm tier (hosted judge if `vars.JUDGE_PROVIDER` is set, else Ollama on the runner), gate, reports artifact |
+| `redteam.yml` | Mondays, manual | DeepTeam run against a hosted judge |
 
-Reporting *"my local judge scored kappa 0.31, so I did not gate on it"* is a
-stronger result than a green dashboard nobody checked.
+## Known limitations
 
----
-
-## Versions
-
-All pins are exact. Every library here has made breaking changes across minor
-versions, and most tutorials you'll find target the old ones.
-
-`langchain 1.4.0` · `langgraph 1.2.11` · `langwatch 1.3.1` · `deepeval 4.2.1` ·
-`ragas 0.4.3` · Python 3.11
-
----
-
-## Where to go next
-
-The honest limitations of this repo, and what you would do about them:
-
-1. **The corpus is 8 documents.** Retrieval is easy at this scale. Swap in your
-   own domain corpus and the metrics get interesting immediately.
-2. **The golden questions reuse the source vocabulary**, which flatters lexical
-   retrieval. Adding paraphrased questions would create real headroom.
-3. **The judged tier has never been calibrated on your hardware.** Run
-   `calibrate.py` before trusting a single judged number.
-4. **Production traffic beats an imagined dataset.** Lesson 06's real payoff is
-   the loop back to lesson 04: real questions become new golden items.
+- **The judge is not calibrated.** Nothing here measures whether the judge
+  agrees with human labels. The thresholds in `config/thresholds.yaml` are
+  starting values. Run the llm tier several times, look at the spread in
+  `reports/summary.md`, and set thresholds outside the noise band before
+  trusting a red result.
+- **Small local judges are weak judges.** Measured on the same correct
+  answers: `qwen2.5:3b` scored Faithfulness, Answer Relevancy and Argument
+  Correctness at 0.0 with reasons contradicting the score; `qwen2.5:7b` scored
+  them 1.0. Do not judge with anything under ~7B, and use a hosted judge for
+  decisions.
+- **CPU judges are slow.** One RAG case takes several minutes on 4 CPU cores.
+  `evalkit` raises DeepEval's own per-call timeouts so slow judges do not
+  surface as timeout errors (see `.env.example`).
+- **Weak attackers prove little.** In red teaming the judge is also the
+  attacker. A clean result from a small model is weak evidence.
+- **StepEfficiency relies on a private DeepEval attribute.**
+  `builders.agent_test_case` sets `LLMTestCase._trace_dict` so trace-based
+  metrics work in plain pytest. `tests/unit/test_deepeval_contract.py` fails if
+  an upgrade breaks that.
+- **deepteam 1.0.9 needs `sentry-sdk`** but does not declare it. It is pinned
+  explicitly in `pyproject.toml`.
+- **The bundled retriever is lexical.** It misses synonyms ("price" vs "costs");
+  `test_lexical_retrieval_misses_synonyms` keeps this visible.

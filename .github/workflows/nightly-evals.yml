@@ -1,0 +1,88 @@
+# Nightly llm tier: every judged suite, then the regression gate.
+#
+# Provider selection, in order:
+#   1. repository variable JUDGE_PROVIDER=openai|anthropic|azure, with the
+#      matching secret(s) -- recommended: a stronger judge is a better judge;
+#   2. otherwise Ollama on the runner (CPU only, slow; small default model).
+name: nightly-evals
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "tests/evals sub-directory to run (blank = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-evals
+  cancel-in-progress: false
+
+env:
+  JUDGE_PROVIDER: ${{ vars.JUDGE_PROVIDER || 'ollama' }}
+  JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'qwen2.5:7b' }}
+  SUT_PROVIDER: ${{ vars.SUT_PROVIDER || 'ollama' }}
+  SUT_MODEL: ${{ vars.SUT_MODEL || 'qwen2.5:3b' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+  REQUEST_TIMEOUT_S: "600"
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Cache Ollama models
+        if: env.JUDGE_PROVIDER == 'ollama' || env.SUT_PROVIDER == 'ollama'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-${{ env.JUDGE_MODEL }}-${{ env.SUT_MODEL }}
+      - name: Start Ollama
+        if: env.JUDGE_PROVIDER == 'ollama' || env.SUT_PROVIDER == 'ollama'
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:11434/api/tags && break; sleep 2; done
+          if [ "$JUDGE_PROVIDER" = ollama ]; then ollama pull "$JUDGE_MODEL"; fi
+          if [ "$SUT_PROVIDER" = ollama ]; then ollama pull "$SUT_MODEL"; fi
+          ollama list
+
+      - name: llm tier
+        # Failing cases are expected while thresholds are being tuned; the
+        # gate below is what decides the job's status.
+        continue-on-error: true
+        run: |
+          .venv/bin/python -m pytest -m llm -rs -v -n 2 \
+            "tests/evals/${{ github.event.inputs.suite }}" \
+            --junitxml=reports/junit.xml
+
+      - name: Regression gate
+        run: |
+          .venv/bin/python -m evalkit.reporting.gate
+          cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: warn

@@ -1,0 +1,45 @@
+# DeepTeam red teaming. Weekly and on demand; never on a pull request.
+#
+# The judge is both attacker and grader, so this job only runs against a
+# hosted provider: a small CPU model is too weak an attacker for a clean
+# result to mean anything.
+name: redteam
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JUDGE_PROVIDER: ${{ vars.JUDGE_PROVIDER || 'openai' }}
+  JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-4o-mini' }}
+  SUT_PROVIDER: ${{ vars.SUT_PROVIDER || 'openai' }}
+  SUT_MODEL: ${{ vars.SUT_MODEL || 'gpt-4o-mini' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+jobs:
+  redteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Red team
+        run: .venv/bin/python -m pytest -m redteam -rs -v -s
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redteam-${{ github.run_id }}
+          path: reports/redteam.json
+          if-no-files-found: warn
