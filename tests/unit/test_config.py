@@ -40,3 +40,13 @@ def test_unknown_provider_is_rejected(monkeypatch):
     monkeypatch.setenv("JUDGE_PROVIDER", "gpt-banana")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_deepeval_timeouts_are_raised_before_deepeval_loads():
+    """Without this, slow local judges report Faithfulness as a timeout error."""
+    import os
+
+    import evalkit  # noqa: F401
+
+    assert float(os.environ["DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE"]) >= 600
+    assert float(os.environ["DEEPEVAL_PER_TASK_TIMEOUT_SECONDS_OVERRIDE"]) >= 3600

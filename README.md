@@ -177,9 +177,14 @@ your chosen judge. Until then the nightly gate only reports.
   starting values. Run the llm tier several times, look at the spread in
   `reports/summary.md`, and set thresholds outside the noise band before
   trusting a red result.
-- **Small local judges are weak judges.** An 8B (let alone 3B) model will
-  sometimes fail DeepEval's JSON schemas or mis-score. These show up as metric
-  errors, not passes. Use a hosted judge for decisions.
+- **Small local judges are weak judges.** Measured on the same correct
+  answers: `qwen2.5:3b` scored Faithfulness, Answer Relevancy and Argument
+  Correctness at 0.0 with reasons contradicting the score; `qwen2.5:7b` scored
+  them 1.0. Do not judge with anything under ~7B, and use a hosted judge for
+  decisions.
+- **CPU judges are slow.** One RAG case takes several minutes on 4 CPU cores.
+  `evalkit` raises DeepEval's own per-call timeouts so slow judges do not
+  surface as timeout errors (see `.env.example`).
 - **Weak attackers prove little.** In red teaming the judge is also the
   attacker. A clean result from a small model is weak evidence.
 - **StepEfficiency relies on a private DeepEval attribute.**
